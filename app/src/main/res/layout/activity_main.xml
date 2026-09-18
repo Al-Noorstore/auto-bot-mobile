@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0B0F14">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🤖 AUTO BOT"
+            android:textColor="#22D3EE"
+            android:textSize="28sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Mobile Command Center v1.0"
+            android:textColor="#8B98A9"
+            android:textSize="14sp"
+            android:layout_marginBottom="20dp" />
+
+        <EditText
+            android:id="@+id/inputName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Naam (e.g. Ali Khan)"
+            android:textColorHint="#5B6675"
+            android:textColor="#E6EDF3"
+            android:inputType="textPersonName"
+            android:layout_marginBottom="12dp" />
+
+        <EditText
+            android:id="@+id/inputPhone"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Number (e.g. +923001234567)"
+            android:textColorHint="#5B6675"
+            android:textColor="#E6EDF3"
+            android:inputType="phone"
+            android:layout_marginBottom="16dp" />
+
+        <Button
+            android:id="@+id/btnSaveContact"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="💾 Contact Book Mein Save Karo"
+            android:layout_marginBottom="10dp" />
+
+        <Button
+            android:id="@+id/btnAutoCall"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="📞 Auto Call (bina dialer ke)"
+            android:layout_marginBottom="10dp" />
+
+        <Button
+            android:id="@+id/btnWhatsApp"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="💬 WhatsApp Chat Kholo"
+            android:layout_marginBottom="10dp" />
+
+        <Button
+            android:id="@+id/btnDashboard"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="🌐 Auto Bot Dashboard Kholo"
+            android:layout_marginBottom="10dp" />
+
+        <EditText
+            android:id="@+id/inputServerUrl"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Dashboard URL (deploy ke baad)"
+            android:textColorHint="#5B6675"
+            android:textColor="#E6EDF3"
+            android:inputType="textUri"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:id="@+id/statusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Ready"
+            android:textColor="#34D399"
+            android:textSize="13sp"
+            android:layout_marginTop="8dp" />
+    </LinearLayout>
+</ScrollView>
