@@ -9,6 +9,99 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+
+    <!-- TERMINAL (real Android shell, background bot bhi use karta hai) -->
+    <LinearLayout
+        android:id="@+id/terminalScreen"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:background="#0d1117"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="14dp"
+            android:paddingEnd="8dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="🖥 Terminal"
+                android:textColor="#10a37f"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btnTermClear"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:text="Clear"
+                android:textColor="#9b9b9b"
+                android:textSize="12sp"
+                android:background="#00000000" />
+
+            <Button
+                android:id="@+id/btnTermClose"
+                android:layout_width="wrap_content"
+                android:layout_height="38dp"
+                android:text="✕"
+                android:textColor="#9b9b9b"
+                android:textSize="15sp"
+                android:background="#00000000" />
+        </LinearLayout>
+
+        <ScrollView
+            android:id="@+id/termScroll"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <TextView
+                android:id="@+id/termOut"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:textColor="#c9d1d9"
+                android:textSize="12sp"
+                android:padding="12dp" />
+        </ScrollView>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="#161b22"
+            android:padding="8dp">
+
+            <EditText
+                android:id="@+id/termIn"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="sh command..."
+                android:textColorHint="#6b6b6b"
+                android:textColor="#c9d1d9"
+                android:fontFamily="monospace"
+                android:textSize="13sp"
+                android:imeOptions="actionDone" />
+
+            <Button
+                android:id="@+id/btnTermRun"
+                android:layout_width="56dp"
+                android:layout_height="44dp"
+                android:text="▶"
+                android:textColor="#000000"
+                android:textSize="16sp"
+                android:background="#10a37f" />
+        </LinearLayout>
+    </LinearLayout>
+
     <!-- NATIVE POWERS PANEL (site sidebar se khulta hai) -->
     <ScrollView
         android:id="@+id/nativeScreen"
