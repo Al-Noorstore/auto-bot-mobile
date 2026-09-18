@@ -21,7 +21,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Mobile Command Center v1.0"
+            android:text="Mobile Command Center v1.1"
             android:textColor="#8B98A9"
             android:textSize="14sp"
             android:layout_marginBottom="20dp" />
