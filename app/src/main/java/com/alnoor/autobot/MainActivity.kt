@@ -64,6 +64,7 @@ class MainActivity : AppCompatActivity() {
 
     // ---------- Python 3.11 engine (APK ke andar bundled) ----------
     private var pipDir: String = ""
+    private var currentProject: File = File("")
 
     private fun pythonReady(): Boolean {
         return try {
@@ -79,11 +80,9 @@ class MainActivity : AppCompatActivity() {
             var out = ""
             try {
                 val runner = Python.getInstance().getModule("runner")
-                if (pipDir.isEmpty()) {
-                    pipDir = File(getExternalFilesDir(null), "pip").absolutePath
-                    runner.callAttr("run_code", "import sys; sys.path.insert(0, '" + pipDir + "')")
-                }
-                out = runner.callAttr("run_code", code).toString()
+                if (pipDir.isEmpty()) pipDir = File(getExternalFilesDir(null), "pip").absolutePath
+                val wd = if (currentProject.exists()) currentProject.absolutePath else null
+                out = runner.callAttr("run_code", code, wd).toString()
             } catch (e: Exception) { out = "Python error: " + e.message }
             val res = out.trim().take(3000)
             runOnUiThread {
@@ -99,9 +98,10 @@ class MainActivity : AppCompatActivity() {
         Thread {
             var out = ""
             try {
-                if (pipDir.isEmpty()) pipDir = File(getExternalFilesDir(null), "pip").absolutePath
+                val target = if (currentProject.exists()) File(currentProject, "libs").absolutePath
+                            else File(getExternalFilesDir(null), "pip").absolutePath
                 val runner = Python.getInstance().getModule("runner")
-                out = runner.callAttr("pip_install", pkg.trim(), pipDir).toString()
+                out = runner.callAttr("pip_install", pkg.trim(), target).toString()
             } catch (e: Exception) { out = "pip error: " + e.message }
             val res = out.trim().take(3000)
             runOnUiThread {
@@ -272,6 +272,13 @@ class MainActivity : AppCompatActivity() {
         if (low == "terminal" || low == "open terminal") { runOnUiThread { showTerminal(true) }; chatReply("🖥 Terminal khul gaya — screen pe command likho."); return true }
         if (low.startsWith("run ")) { runShell(msg.substring(4).trim(), fromChat = true); chatReply("⏳ Command chal raha hai terminal mein..."); return true }
         if (low.startsWith("python ") || low.startsWith("py ")) { runPython(msg.substring(low.indexOf(' ') + 1).trim(), fromChat = true); return true }
+        if (low.startsWith("project ")) {
+            val name = msg.substring(8).trim().replace(Regex("[^A-Za-z0-9_-]"), "_")
+            currentProject = File(getExternalFilesDir(null), "work/" + name).apply { mkdirs() }
+            File(currentProject, "libs").mkdirs()
+            val proj = if (name.isEmpty()) "main" else name
+            chatReply("📁 Project '" + proj + "' ready!\nPath: " + currentProject.absolutePath + "\nAb 'py ...' isi project mein chalega, aur 'pip install <pkg>' isi ke libs/ mein install hoga."); return true
+        }
         if (low.startsWith("pip install ")) { pipInstall(msg.substring(12).trim(), fromChat = true); chatReply("⏳ pip install chal raha hai..."); return true }
         if (low.startsWith("cmd ")) { runShell(msg.substring(4).trim(), fromChat = true); chatReply("⏳ Command chal raha hai terminal mein..."); return true }
         if (low.startsWith("open ")) {

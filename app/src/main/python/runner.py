@@ -8,8 +8,13 @@ def _set_pip_dir(d):
     if d and d not in sys.path:
         sys.path.insert(0, d)
 
-def run_code(code):
+def run_code(code, workdir=None):
     """User ka Python code chalao, stdout+stderr capture kar ke return karo."""
+    if workdir:
+        os.makedirs(workdir, exist_ok=True)
+        os.chdir(workdir)
+        if workdir not in sys.path:
+            sys.path.insert(0, workdir)
     if PIP_DIR and PIP_DIR not in sys.path:
         sys.path.insert(0, PIP_DIR)
     buf = io.StringIO()
