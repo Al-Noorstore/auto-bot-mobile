@@ -11,12 +11,25 @@ android {
         applicationId "com.alnoor.autobot"
         minSdk 24
         targetSdk 34
-        versionCode 2
-        versionName "1.1"
+        versionCode 3
+        versionName "1.2"
     }
 
+    signingConfigs {
+        release {
+            storeFile rootProject.file("autobot.p12")
+            storePassword "autobot2026"
+            keyAlias "autobot"
+            keyPassword "autobot2026"
+            storeType "PKCS12"
+        }
+    }
     buildTypes {
         debug { minifyEnabled false }
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
