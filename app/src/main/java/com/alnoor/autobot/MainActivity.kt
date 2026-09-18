@@ -7,6 +7,10 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.ContactsContract
+import android.view.View
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
@@ -17,9 +21,10 @@ import androidx.core.content.ContextCompat
 
 class MainActivity : AppCompatActivity() {
 
+    private lateinit var webView: WebView
+    private lateinit var nativePanel: View
     private lateinit var inputName: EditText
     private lateinit var inputPhone: EditText
-    private lateinit var inputServerUrl: EditText
     private lateinit var statusText: TextView
 
     private val REQ_CALL = 101
@@ -32,18 +37,47 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        webView = findViewById(R.id.webView)
+        nativePanel = findViewById(R.id.nativePanel)
         inputName = findViewById(R.id.inputName)
         inputPhone = findViewById(R.id.inputPhone)
-        inputServerUrl = findViewById(R.id.inputServerUrl)
         statusText = findViewById(R.id.statusText)
 
-        val savedUrl = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_URL, DEFAULT_URL)
-        inputServerUrl.setText(savedUrl)
+        // WebView = poori Auto Bot website (chat, tasks, contacts, rules, memory)
+        webView.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            cacheMode = WebSettings.LOAD_DEFAULT
+            setSupportZoom(false)
+            useWideViewPort = true
+            loadWithOverviewMode = true
+        }
+        webView.webViewClient = WebViewClient()
+        val url = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_URL, DEFAULT_URL) ?: DEFAULT_URL
+        webView.loadUrl(url)
+
+        // Native screen toggle
+        findViewById<Button>(R.id.btnNative).setOnClickListener { showNative(true) }
+        findViewById<Button>(R.id.btnBackWeb).setOnClickListener { showNative(false) }
 
         findViewById<Button>(R.id.btnSaveContact).setOnClickListener { saveContact() }
         findViewById<Button>(R.id.btnAutoCall).setOnClickListener { autoCall() }
         findViewById<Button>(R.id.btnWhatsApp).setOnClickListener { openWhatsApp() }
-        findViewById<Button>(R.id.btnDashboard).setOnClickListener { openDashboard() }
+
+        if (savedInstanceState != null) {
+            webView.restoreState(savedInstanceState)
+            showNative(false)
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        webView.saveState(outState)
+    }
+
+    private fun showNative(show: Boolean) {
+        nativePanel.visibility = if (show) View.VISIBLE else View.GONE
+        webView.visibility = if (show) View.GONE else View.VISIBLE
     }
 
     private fun cleanPhone(): String {
@@ -131,7 +165,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ---------- AUTO CALL (bina dialer ke, direct) ----------
+    // ---------- AUTO CALL ----------
     private fun autoCall() {
         if (!validPhone()) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
@@ -162,22 +196,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ---------- DASHBOARD ----------
-    private fun openDashboard() {
-        val url = inputServerUrl.text.toString().trim()
-        if (url.isEmpty()) {
-            toast("Dashboard URL likho (deploy ke baad)"); status("URL missing")
-            return
-        }
-        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(KEY_URL, url).apply()
-        try {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-            status("Dashboard: $url")
-        } catch (e: Exception) {
-            toast("URL fail: ${e.message}")
-        }
-    }
-
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (grantResults.isEmpty() || grantResults[0] != PackageManager.PERMISSION_GRANTED) {
@@ -187,6 +205,16 @@ class MainActivity : AppCompatActivity() {
         when (requestCode) {
             REQ_CALL -> doCall()
             REQ_CONTACTS -> saveContact()
+        }
+    }
+
+    override fun onBackPressed() {
+        if (nativePanel.visibility == View.VISIBLE) {
+            showNative(false)
+        } else if (webView.canGoBack()) {
+            webView.goBack()
+        } else {
+            super.onBackPressed()
         }
     }
 
