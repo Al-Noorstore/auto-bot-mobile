@@ -66,19 +66,39 @@ class MainActivity : AppCompatActivity() {
     private var pipDir: String = ""
     private var currentProject: File = File("")
 
-    private fun pythonReady(): Boolean {
+    @Volatile private var pyStarting = false
+    private fun ensurePythonStarted(timeoutMs: Long = 15000): Boolean {
+        if (Python.isStarted()) return true
+        synchronized(this) {
+            if (Python.isStarted()) return true
+            if (pyStarting) {
+                val start = System.currentTimeMillis()
+                while (pyStarting && System.currentTimeMillis() - start < timeoutMs) Thread.sleep(150)
+                return Python.isStarted()
+            }
+            pyStarting = true
+        }
         return try {
-            Python.getInstance()
+            Python.start(AndroidPlatform(applicationContext))
+            pyStarting = false
             true
-        } catch (e: Exception) { false }
+        } catch (e: Throwable) {
+            pyStarting = false
+            false
+        }
+    }
+
+    private fun pythonReady(): Boolean {
+        // Isi thread se call ho (already background thread se runPython/pipInstall karte hain)
+        return try { ensurePythonStarted() } catch (e: Exception) { false }
     }
 
     private fun runPython(code: String, fromChat: Boolean = false) {
         appendTerm("\n>>> $code\n")
-        if (!pythonReady()) { val m = "❌ Python engine load nahi hui (install/storage check karo)"; appendTerm(m + "\n"); if (fromChat) chatReply(m); return }
         Thread {
             var out = ""
             try {
+                if (!pythonReady()) throw Exception("Python engine load nahi hui (RAM/storage check karo)")
                 val runner = Python.getInstance().getModule("runner")
                 if (pipDir.isEmpty()) pipDir = File(getExternalFilesDir(null), "pip").absolutePath
                 val wd = if (currentProject.exists()) currentProject.absolutePath else null
@@ -94,10 +114,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun pipInstall(pkg: String, fromChat: Boolean = false) {
         appendTerm("\n$ pip install $pkg\n")
-        if (!pythonReady()) { val m = "❌ Python engine load nahi hui"; appendTerm(m + "\n"); if (fromChat) chatReply(m); return }
         Thread {
             var out = ""
             try {
+                if (!pythonReady()) throw Exception("Python engine load nahi hui")
                 val target = if (currentProject.exists()) File(currentProject, "libs").absolutePath
                             else File(getExternalFilesDir(null), "pip").absolutePath
                 val runner = Python.getInstance().getModule("runner")
@@ -230,11 +250,8 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (_: Exception) {}
         setContentView(R.layout.activity_main)
-        try {
-            if (!Python.isStarted()) Python.start(AndroidPlatform(this))
-        } catch (e: Throwable) {
-            Toast.makeText(this, "Python engine load fail: " + e.message, Toast.LENGTH_LONG).show()
-        }
+        // Python engine yahan load NAHI karte — kam-RAM phones (jaise Redmi 9C) pe ye
+        // main-thread launch crash ka sab se bara sabab tha. Ab lazy + background thread mein.
 
         webView = findViewById(R.id.webView)
         nativeScreen = findViewById(R.id.nativeScreen)
