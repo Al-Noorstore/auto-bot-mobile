@@ -20,6 +20,11 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
+import android.widget.ScrollView
+import org.json.JSONObject
+import java.io.File
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -36,6 +41,87 @@ class MainActivity : AppCompatActivity() {
     private lateinit var inputPhone: EditText
     private lateinit var statusText: TextView
     private var pendingCall = false
+    private lateinit var terminalScreen: View
+    private lateinit var termOut: TextView
+    private lateinit var termScroll: ScrollView
+    private lateinit var termIn: EditText
+    private val termBuf = StringBuilder()
+
+    // shell engine: real Android sh, background mein bot bhi use karta hai
+    private fun runShell(cmd: String, fromChat: Boolean = false, label: String = "$") {
+        appendTerm("\n$ $cmd\n")
+        Thread {
+            var out = ""
+            try {
+                val cwd = File(getExternalFilesDir(null), "work").apply { mkdirs() }
+                val p = ProcessBuilder("sh", "-c", cmd)
+                    .directory(cwd)
+                    .redirectErrorStream(true)
+                    .start()
+                val reader = BufferedReader(InputStreamReader(p.inputStream))
+                val sb = StringBuilder()
+                var line: String? = reader.readLine()
+                var count = 0
+                while (line != null && count < 500) { sb.append(line).append("\n"); line = reader.readLine(); count++ }
+                val done = try { p.waitFor() == 0 } catch (e: Exception) { false }
+                out = sb.toString().ifBlank { "(no output, exit ok)" }
+                reader.close(); p.destroy()
+            } catch (e: Exception) { out = "Error: " + e.message }
+            val res = out.trim().take(3000)
+            runOnUiThread {
+                appendTerm(res + "\n")
+                if (fromChat) chatReply(if (res.isEmpty() || res == "(no output, exit ok)") "✅ Command chal gaya: $cmd" else "\n$res")
+            }
+        }.start()
+    }
+
+    private fun appendTerm(text: String) {
+        termBuf.append(text)
+        runOnUiThread {
+            termOut.text = termBuf.toString()
+            termScroll.post { termScroll.fullScroll(ScrollView.FOCUS_DOWN) }
+        }
+    }
+
+    private fun chatReply(text: String) {
+        try {
+            webView.evaluateJavascript("window.__localBotReply(" + JSONObject.quote(text) + ")", null)
+        } catch (e: Exception) { appendTerm("[chat-reply-fail]\n" + text) }
+    }
+
+    private fun showTerminal(show: Boolean) {
+        terminalScreen.visibility = if (show) View.VISIBLE else View.GONE
+    }
+
+    private fun openAppByName(name: String): String {
+        val n = name.trim().lowercase()
+        val pkgMap = mapOf(
+            "whatsapp" to "com.whatsapp", "youtube" to "com.google.android.youtube",
+            "chrome" to "com.android.chrome", "browser" to "com.android.chrome",
+            "gmail" to "com.google.android.gm", "email" to "com.google.android.gm",
+            "maps" to "com.google.android.apps.maps", "playstore" to "com.android.vending",
+            "play store" to "com.android.vending", "photos" to "com.google.android.apps.photos",
+            "gallery" to "com.google.android.apps.photos", "camera" to "com.android.camera2",
+            "facebook" to "com.facebook.katana", "instagram" to "com.instagram.android",
+            "tiktok" to "com.zhiliaoapp.musically", "spotify" to "com.spotify.music",
+            "telegram" to "org.telegram.messenger", "settings" to "com.android.settings"
+        )
+        var pkg = pkgMap[n] ?: if (n.contains(".")) n else null
+        if (pkg == null) { // fuzzy: koi bhi installed app jiska naam match kare
+            for (pi in packageManager.getInstalledPackages(0)) {
+                val lbl = pi.applicationInfo.loadLabel(packageManager).toString().lowercase()
+                if (lbl.contains(n)) { pkg = pi.packageName; break }
+            }
+        }
+        if (pkg == null) return "App nahi mili: $name. Spelling check karo ya package naam do (e.g. open com.whatsapp)."
+        return try {
+            val intent = packageManager.getLaunchIntentForPackage(pkg) ?: return "App installed nahi hai: $pkg"
+            startActivity(intent)
+            "✅ App khul gayi: $name"
+        } catch (e: Exception) { "App open fail: " + e.message }
+    }
+
+    private fun openUrl(url: String) { try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse(url))); } catch (e: Exception) {} }
 
     // ---------- lifecycle ----------
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -47,6 +133,14 @@ class MainActivity : AppCompatActivity() {
         inputName = findViewById(R.id.inputName)
         inputPhone = findViewById(R.id.inputPhone)
         statusText = findViewById(R.id.statusText)
+        terminalScreen = findViewById(R.id.terminalScreen)
+        termOut = findViewById(R.id.termOut)
+        termScroll = findViewById(R.id.termScroll)
+        termIn = findViewById(R.id.termIn)
+        findViewById<Button>(R.id.btnTermRun).setOnClickListener { runShell(termIn.text.toString().trim()); termIn.setText("") }
+        findViewById<Button>(R.id.btnTermClear).setOnClickListener { termBuf.setLength(0); termOut.text = "" }
+        findViewById<Button>(R.id.btnTermClose).setOnClickListener { showTerminal(false) }
+        appendTerm("Auto Bot Terminal v1.6 — real Android shell (sh)\nWorking dir: " + File(getExternalFilesDir(null), "work").absolutePath + "\nCommands: ls, mkdir, echo, cat, rm, cp, mv, ps, df, date...\nChalo koi bhi command do!\n")
 
         webView.settings.apply {
             javaScriptEnabled = true
@@ -102,7 +196,39 @@ class MainActivity : AppCompatActivity() {
         webView.saveState(outState)
     }
 
+    private fun runCommand(low: String, msg: String): Boolean {
+        if (low == "terminal" || low == "open terminal") { runOnUiThread { showTerminal(true) }; chatReply("🖥 Terminal khul gaya — screen pe command likho."); return true }
+        if (low.startsWith("run ")) { runShell(msg.substring(4).trim(), fromChat = true); chatReply("⏳ Command chal raha hai terminal mein..."); return true }
+        if (low.startsWith("cmd ")) { runShell(msg.substring(4).trim(), fromChat = true); chatReply("⏳ Command chal raha hai terminal mein..."); return true }
+        if (low.startsWith("open ")) {
+            val target = msg.substring(5).trim()
+            return if (target.startsWith("http")) { runOnUiThread { openUrl(target) }; chatReply("🌐 Khol diya: $target"); true }
+            else { val r = openAppByName(target); chatReply(r); true }
+        }
+        if (low.startsWith("youtube ") || low.startsWith("play ")) {
+            val q = msg.substring(low.indexOf(' ') + 1).trim()
+            runOnUiThread { openUrl("https://www.youtube.com/results?search_query=" + java.net.URLEncoder.encode(q, "UTF-8")) }
+            chatReply("▶️ YouTube pe khel raha hoon: \"$q\" — pehla video kholne ke liye bola jao to \"play now\" likho."); return true
+        }
+        if (low == "play" || low == "play now") { runOnUiThread { openUrl("https://www.youtube.com") }; chatReply("▶️ YouTube khul gaya."); return true }
+        if (low.startsWith("search ")) {
+            val q = msg.substring(7).trim()
+            runOnUiThread { openUrl("https://www.google.com/search?q=" + java.net.URLEncoder.encode(q, "UTF-8")) }
+            chatReply("🔍 Google pe search khol diya: $q"); return true
+        }
+        if (low.startsWith("call ")) { runOnUiThread { inputPhone.setText(msg.substring(5).trim()); autoCall() }; chatReply("📞 Call kar raha hoon..."); return true }
+        if (low.startsWith("wa ") || low.startsWith("whatsapp ")) {
+            val q = msg.substring(low.indexOf(' ') + 1).trim()
+            runOnUiThread { openUrl("https://wa.me/" + q.replace(Regex("[^0-9]"), "")) }
+            chatReply("💬 WhatsApp chat khul rahi hai..."); return true
+        }
+        if (low.startsWith("mkdir ")) { runShell("mkdir -p " + msg.substring(6).trim(), fromChat = true); chatReply("📁 Folder ban raha hai..."); return true }
+        if (low.startsWith("file ")) { runShell("touch " + msg.substring(5).trim(), fromChat = true); chatReply("📄 File ban rahi hai..."); return true }
+        return false
+    }
+
     override fun onBackPressed() {
+        if (terminalScreen.visibility == View.VISIBLE) { showTerminal(false); return }
         if (nativeScreen.visibility == View.VISIBLE) { showNative(false); return }
         if (webView.canGoBack()) { webView.goBack(); return }
         super.onBackPressed()
@@ -116,6 +242,17 @@ class MainActivity : AppCompatActivity() {
     inner class NativeBridge {
         @JavascriptInterface
         fun openNativePanel() { runOnUiThread { showNative(true) } }
+
+        @JavascriptInterface
+        fun openTerminal() { runOnUiThread { showTerminal(true) } }
+
+        // website chat se local commands — ye bot ko powerful banata hai
+        @JavascriptInterface
+        fun handleChatCommand(msg: String): Boolean {
+            val m = msg.trim()
+            val low = m.lowercase()
+            return runCommand(low, m)
+        }
 
         @JavascriptInterface
         fun appStatus(): String = "Auto Bot native v1.5 — online: ${isOnline()}"
