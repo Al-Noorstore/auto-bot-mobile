@@ -22,8 +22,6 @@ import android.widget.TextView
 import android.widget.Toast
 import android.widget.ScrollView
 import org.json.JSONObject
-import com.chaquo.python.Python
-import com.chaquo.python.android.AndroidPlatform
 import java.io.File
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -66,43 +64,14 @@ class MainActivity : AppCompatActivity() {
     private var pipDir: String = ""
     private var currentProject: File = File("")
 
-    @Volatile private var pyStarting = false
-    private fun ensurePythonStarted(timeoutMs: Long = 15000): Boolean {
-        if (Python.isStarted()) return true
-        synchronized(this) {
-            if (Python.isStarted()) return true
-            if (pyStarting) {
-                val start = System.currentTimeMillis()
-                while (pyStarting && System.currentTimeMillis() - start < timeoutMs) Thread.sleep(150)
-                return Python.isStarted()
-            }
-            pyStarting = true
-        }
-        return try {
-            Python.start(AndroidPlatform(applicationContext))
-            pyStarting = false
-            true
-        } catch (e: Throwable) {
-            pyStarting = false
-            false
-        }
-    }
-
-    private fun pythonReady(): Boolean {
-        // Isi thread se call ho (already background thread se runPython/pipInstall karte hain)
-        return try { ensurePythonStarted() } catch (e: Exception) { false }
-    }
-
     private fun runPython(code: String, fromChat: Boolean = false) {
         appendTerm("\n>>> $code\n")
         Thread {
             var out = ""
             try {
-                if (!pythonReady()) throw Exception("Python engine load nahi hui (RAM/storage check karo)")
-                val runner = Python.getInstance().getModule("runner")
                 if (pipDir.isEmpty()) pipDir = File(getExternalFilesDir(null), "pip").absolutePath
                 val wd = if (currentProject.exists()) currentProject.absolutePath else null
-                out = runner.callAttr("run_code", code, wd).toString()
+                out = PyEngine.runCode(applicationContext, code, wd)
             } catch (e: Exception) { out = "Python error: " + e.message }
             val res = out.trim().take(3000)
             runOnUiThread {
@@ -117,11 +86,9 @@ class MainActivity : AppCompatActivity() {
         Thread {
             var out = ""
             try {
-                if (!pythonReady()) throw Exception("Python engine load nahi hui")
                 val target = if (currentProject.exists()) File(currentProject, "libs").absolutePath
                             else File(getExternalFilesDir(null), "pip").absolutePath
-                val runner = Python.getInstance().getModule("runner")
-                out = runner.callAttr("pip_install", pkg.trim(), target).toString()
+                out = PyEngine.pipInstall(applicationContext, pkg.trim(), target)
             } catch (e: Exception) { out = "pip error: " + e.message }
             val res = out.trim().take(3000)
             runOnUiThread {
@@ -265,7 +232,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnTermRun).setOnClickListener { runShell(termIn.text.toString().trim()); termIn.setText("") }
         findViewById<Button>(R.id.btnTermClear).setOnClickListener { termBuf.setLength(0); termOut.text = "" }
         findViewById<Button>(R.id.btnTermClose).setOnClickListener { showTerminal(false) }
-        appendTerm("Auto Bot Terminal v1.6 — real Android shell (sh)\nWorking dir: " + File(getExternalFilesDir(null), "work").absolutePath + "\nShell: ls, mkdir, echo, cat, rm, cp, mv, ps, df...\nPython 3.11 BUILT-IN: 'py print(2+2)' | 'py import requests'\nPip: 'pip install <package>' (pure-python packages)\nChalo koi bhi command do!\n")
+        appendTerm("Auto Bot Terminal v2.1 (" + PyEngine.brand + ") — real Android shell (sh)\nWorking dir: " + File(getExternalFilesDir(null), "work").absolutePath + "\nShell: ls, mkdir, echo, cat, rm, cp, mv, ps, df...\n" + PyEngine.pyHint + "\nChalo koi bhi command do!\n")
 
         webView.settings.apply {
             javaScriptEnabled = true
@@ -434,7 +401,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         @JavascriptInterface
-        fun appStatus(): String = "Auto Bot native v1.5 — online: ${isOnline()}"
+        fun appStatus(): String = "AutoBot " + PyEngine.brand + " (v" + BuildConfig.VERSION_NAME + ") — online: ${isOnline()}"
 
         @JavascriptInterface
         fun saveToPhoneBook(name: String, phone: String) {

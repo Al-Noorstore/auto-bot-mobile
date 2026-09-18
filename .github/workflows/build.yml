@@ -23,11 +23,26 @@ jobs:
       - name: Decode signing keystore
         run: echo "${{ secrets.AUTOBOT_KEYSTORE_B64 }}" | base64 -d > autobot.p12
 
-      - name: Build signed release APK
-        run: gradle assembleRelease --no-daemon
+      # ---------- AutoBot LITE (no Python — chhota, low-RAM safe, default) ----------
+      - name: Build AutoBot LITE APK
+        run: |
+          gradle assembleRelease -PliteBuild=true --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk AutoBot-Lite-v2.1.apk
 
-      - name: Upload APK
+      # ---------- AutoBot PRO (Python 3.11 inside — zyada RAM wale phone ke liye) ----------
+      - name: Build AutoBot PRO APK
+        run: |
+          gradle clean assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk AutoBot-Pro-v2.1.apk
+
+      - name: Upload LITE APK
         uses: actions/upload-artifact@v4
         with:
-          name: AutoBot-APK
-          path: app/build/outputs/apk/release/app-release.apk
+          name: AutoBot-LITE-APK
+          path: AutoBot-Lite-v2.1.apk
+
+      - name: Upload PRO APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AutoBot-PRO-APK
+          path: AutoBot-Pro-v2.1.apk
