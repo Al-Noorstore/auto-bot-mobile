@@ -298,6 +298,7 @@ async function send() {
   bubble('user', full);
   setSend();
   typing();
+  if (window.AutoBotNative) { window.__lastLocalMsg = m; if (AutoBotNative.handleChatCommand(m)) { return; } }
   const d = await post('chat', { message: m, file: attached });
   $('typing') && $('typing').remove();
   const reply = d.reply || d.error || 'Hmm, no response.';
@@ -453,10 +454,11 @@ if (chatHist.length) {
 })();
 </script>
 <script>
+  window.__localBotReply = function (t) { $('typing') && $('typing').remove(); bubble('bot', t); chatHist.push({ u: window.__lastLocalMsg || '', b: t }); saveChat(); };
   if (window.AutoBotNative) {
     document.body.insertAdjacentHTML('afterbegin', '<div style="background:#0ea5b7;color:#04222a;padding:6px 14px;font-size:12px;font-weight:600;text-align:center">📱 Native mode ON — contacts phone mein save honge</div>');
     var mo = document.getElementById('sidebar');
-    if (mo) mo.insertAdjacentHTML('beforeend', '<button class="nav-item" onclick="AutoBotNative.openNativePanel()"><span class="nav-ico">⚡</span> Native Powers</button>');
+    if (mo) mo.insertAdjacentHTML('beforeend', '<button class="nav-item" onclick="AutoBotNative.openTerminal()"><span class="nav-ico">🖥️</span> Terminal</button><button class="nav-item" onclick="AutoBotNative.openNativePanel()"><span class="nav-ico">⚡</span> Native Powers</button>');
   }
 </script>
 </body>
