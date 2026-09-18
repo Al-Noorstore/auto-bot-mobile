@@ -4,7 +4,7 @@
     android:layout_height="match_parent"
     android:background="#0B0F14">
 
-    <!-- MAIN: Auto Bot website UI (chat, tasks, contacts, rules, memory) -->
+    <!-- MAIN COLUMN -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -16,14 +16,23 @@
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:background="#10161F"
-            android:paddingStart="16dp"
+            android:paddingStart="10dp"
             android:paddingEnd="8dp">
+
+            <Button
+                android:id="@+id/btnMenu"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:text="☰"
+                android:textColor="#E6EDF3"
+                android:textSize="20sp"
+                android:background="#00000000" />
 
             <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="🤖 AUTO BOT v1.3"
+                android:text="🤖 Auto Bot"
                 android:textColor="#22D3EE"
                 android:textSize="18sp"
                 android:textStyle="bold" />
@@ -40,106 +49,233 @@
                 android:paddingEnd="14dp" />
         </LinearLayout>
 
-        <WebView
-            android:id="@+id/webView"
+        <!-- CHAT SCREEN -->
+        <LinearLayout
+            android:id="@+id/chatScreen"
             android:layout_width="match_parent"
-            android:layout_height="match_parent" />
+            android:layout_height="match_parent"
+            android:orientation="vertical">
+
+            <ScrollView
+                android:id="@+id/chatScroll"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1">
+
+                <LinearLayout
+                    android:id="@+id/msgContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="12dp" />
+            </ScrollView>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="#10161F"
+                android:padding="10dp">
+
+                <EditText
+                    android:id="@+id/inputMsg"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:hint="Message Auto Bot..."
+                    android:textColorHint="#5B6675"
+                    android:textColor="#E6EDF3"
+                    android:inputType="text"
+                    android:imeOptions="actionSend" />
+
+                <Button
+                    android:id="@+id/btnSend"
+                    android:layout_width="56dp"
+                    android:layout_height="48dp"
+                    android:text="➤"
+                    android:textColor="#FFFFFF"
+                    android:textSize="20sp"
+                    android:background="#22D3EE" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- LIST SCREEN (tasks/approvals/contacts/rules/memory/hunt/buyers) -->
+        <LinearLayout
+            android:id="@+id/listScreen"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/listTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="#E6EDF3"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:padding="16dp" />
+
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1">
+
+                <LinearLayout
+                    android:id="@+id/listContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:paddingBottom="16dp" />
+            </ScrollView>
+
+            <LinearLayout
+                android:id="@+id/actionArea"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="#10161F"
+                android:padding="12dp" />
+        </LinearLayout>
+
+        <!-- NATIVE POWERS SCREEN -->
+        <ScrollView
+            android:id="@+id/nativeScreen"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="24dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="📱 Native Powers"
+                    android:textColor="#22D3EE"
+                    android:textSize="24sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Mobile automation — real contact book, direct calls"
+                    android:textColor="#8B98A9"
+                    android:textSize="13sp"
+                    android:layout_marginBottom="20dp" />
+
+                <EditText
+                    android:id="@+id/inputName"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Naam (e.g. Ali Khan)"
+                    android:textColorHint="#5B6675"
+                    android:textColor="#E6EDF3"
+                    android:inputType="textPersonName"
+                    android:layout_marginBottom="12dp" />
+
+                <EditText
+                    android:id="@+id/inputPhone"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Number (e.g. +923001234567)"
+                    android:textColorHint="#5B6675"
+                    android:textColor="#E6EDF3"
+                    android:inputType="phone"
+                    android:layout_marginBottom="16dp" />
+
+                <Button
+                    android:id="@+id/btnSaveContact"
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:text="💾 Phone Contact Book Mein Save Karo"
+                    android:textColor="#E6EDF3"
+                    android:background="#1F2937"
+                    android:layout_marginBottom="10dp" />
+
+                <Button
+                    android:id="@+id/btnAutoCall"
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:text="📞 Auto Call (bina dialer ke)"
+                    android:textColor="#E6EDF3"
+                    android:background="#1F2937"
+                    android:layout_marginBottom="10dp" />
+
+                <Button
+                    android:id="@+id/btnWhatsApp"
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:text="💬 WhatsApp Chat Kholo"
+                    android:textColor="#E6EDF3"
+                    android:background="#1F2937"
+                    android:layout_marginBottom="10dp" />
+
+                <TextView
+                    android:id="@+id/statusText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Ready"
+                    android:textColor="#34D399"
+                    android:textSize="13sp"
+                    android:layout_marginTop="8dp" />
+            </LinearLayout>
+        </ScrollView>
     </LinearLayout>
 
-    <!-- NATIVE PANEL: mobile powers -->
-    <ScrollView
-        android:id="@+id/nativePanel"
+    <!-- DIM OVERLAY -->
+    <View
+        android:id="@+id/dim"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#0B0F14"
-        android:visibility="gone">
+        android:background="#99000000"
+        android:visibility="gone" />
 
-        <LinearLayout
+    <!-- SIDEBAR -->
+    <LinearLayout
+        android:id="@+id/sidebar"
+        android:layout_width="280dp"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:background="#10161F"
+        android:visibility="gone"
+        android:paddingTop="16dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🤖 Auto Bot"
+            android:textColor="#22D3EE"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:paddingStart="20dp"
+            android:paddingBottom="12dp" />
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <LinearLayout
+                android:id="@+id/sidebarMenu"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </ScrollView>
+
+        <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="24dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="🤖 AUTO BOT"
-                android:textColor="#22D3EE"
-                android:textSize="28sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Mobile Command Center v1.3"
-                android:textColor="#8B98A9"
-                android:textSize="14sp"
-                android:layout_marginBottom="20dp" />
-
-            <Button
-                android:id="@+id/btnBackWeb"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:text="← Dashboard pe wapas"
-                android:textColor="#22D3EE"
-                android:background="#1F2937"
-                android:layout_marginBottom="20dp" />
-
-            <EditText
-                android:id="@+id/inputName"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="Naam (e.g. Ali Khan)"
-                android:textColorHint="#5B6675"
-                android:textColor="#E6EDF3"
-                android:inputType="textPersonName"
-                android:layout_marginBottom="12dp" />
-
-            <EditText
-                android:id="@+id/inputPhone"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="Number (e.g. +923001234567)"
-                android:textColorHint="#5B6675"
-                android:textColor="#E6EDF3"
-                android:inputType="phone"
-                android:layout_marginBottom="16dp" />
-
-            <Button
-                android:id="@+id/btnSaveContact"
-                android:layout_width="match_parent"
-                android:layout_height="56dp"
-                android:text="💾 Contact Book Mein Save Karo"
-                android:textColor="#E6EDF3"
-                android:background="#1F2937"
-                android:layout_marginBottom="10dp" />
-
-            <Button
-                android:id="@+id/btnAutoCall"
-                android:layout_width="match_parent"
-                android:layout_height="56dp"
-                android:text="📞 Auto Call (bina dialer ke)"
-                android:textColor="#E6EDF3"
-                android:background="#1F2937"
-                android:layout_marginBottom="10dp" />
-
-            <Button
-                android:id="@+id/btnWhatsApp"
-                android:layout_width="match_parent"
-                android:layout_height="56dp"
-                android:text="💬 WhatsApp Chat Kholo"
-                android:textColor="#E6EDF3"
-                android:background="#1F2937"
-                android:layout_marginBottom="10dp" />
-
-            <TextView
-                android:id="@+id/statusText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Ready"
-                android:textColor="#34D399"
-                android:textSize="13sp"
-                android:layout_marginTop="8dp" />
-        </LinearLayout>
-    </ScrollView>
+            android:text="Auto Bot v1.4\nOwner: Mr Wishal 👑"
+            android:textColor="#5B6675"
+            android:textSize="12sp"
+            android:padding="16dp" />
+    </LinearLayout>
 </FrameLayout>
