@@ -196,7 +196,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         try {
             if (!Python.isStarted()) Python.start(AndroidPlatform(this))
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Toast.makeText(this, "Python engine load fail: " + e.message, Toast.LENGTH_LONG).show()
         }
 
@@ -240,12 +240,47 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnSaveContact).setOnClickListener { saveContact() }
         findViewById<Button>(R.id.btnAutoCall).setOnClickListener { autoCall() }
         findViewById<Button>(R.id.btnWhatsApp).setOnClickListener { openWhatsApp() }
+        findViewById<Button>(R.id.btnShareCrash).setOnClickListener {
+            try {
+                val txt = File(getExternalFilesDir(null), "crash_log.txt").let { if (it.exists()) it.readText().take(4000) else "(koi crash log nahi — app sahi chal raha hai)" }
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, "Auto Bot crash log:\n\n$txt")
+                }
+                startActivity(Intent.createChooser(send, "Crash log share karo"))
+            } catch (e: Exception) { Toast.makeText(this, "Share fail: " + e.message, Toast.LENGTH_SHORT).show() }
+        }
 
         if (savedInstanceState != null) {
             webView.restoreState(savedInstanceState)
         } else {
             loadSite()
         }
+
+        // pichle crash ka log? → terminal pe dikha do + server pe bhej do
+        try {
+            val logFile = File(getExternalFilesDir(null), "crash_log.txt")
+            if (logFile.exists()) {
+                val txt = logFile.readText().take(2500)
+                appendTerm("\n⚠️ PICHLE CRASH KA LOG:\n" + txt + "\n⚠️ (ye log Auto Bot server ko bhi bheja gaya hai)\n")
+                Thread {
+                    try {
+                        val conn = java.net.URL(BASE + "/api/crash").openConnection() as java.net.HttpURLConnection
+                        conn.requestMethod = "POST"; conn.doOutput = true
+                        conn.setRequestProperty("Content-Type", "application/json")
+                        conn.connectTimeout = 10000; conn.readTimeout = 10000
+                        val payload = org.json.JSONObject().put("log", logFile.readText().take(8000))
+                            .put("device", android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL + " (Android " + android.os.Build.VERSION.RELEASE + ")")
+                        conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                        val code = conn.responseCode
+                        runOnUiThread { appendTerm("\n📨 Crash log server ko bhej diya (HTTP $code)\n") }
+                        conn.disconnect()
+                    } catch (e: Exception) {
+                        runOnUiThread { appendTerm("\n❌ Crash log server nahi gaya: " + e.message + "\n") }
+                    }
+                }.start()
+            }
+        } catch (e: Exception) { appendTerm("\n(crash log read fail: " + e.message + ")\n") }
     }
 
     // exact web UI: online → live site | offline → bundled copy (UI phir bhi poora dikhta hai)
