@@ -26,6 +26,7 @@ class MainActivity : AppCompatActivity() {
     private val REQ_CONTACTS = 102
     private val PREFS = "autobot_prefs"
     private val KEY_URL = "server_url"
+    private val DEFAULT_URL = "https://auto-bot-al-noor-stores-projects.vercel.app"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,7 +37,7 @@ class MainActivity : AppCompatActivity() {
         inputServerUrl = findViewById(R.id.inputServerUrl)
         statusText = findViewById(R.id.statusText)
 
-        val savedUrl = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_URL, "")
+        val savedUrl = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_URL, DEFAULT_URL)
         inputServerUrl.setText(savedUrl)
 
         findViewById<Button>(R.id.btnSaveContact).setOnClickListener { saveContact() }
