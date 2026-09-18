@@ -193,6 +193,42 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Thread.setDefaultUncaughtExceptionHandler(CrashLogger(this))
+        // SAB SE PEHLE: pichle crash ka log dikha do (app crash ho to bhi next launch pe yahan aayenge)
+        try {
+            val lf = File(getExternalFilesDir(null), "crash_log.txt")
+            if (lf.exists() && lf.length() > 0) {
+                val txt = lf.readText().take(3000)
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("⚠️ Pichla Crash Report")
+                    .setMessage(txt + "\n\nYe log Auto Bot server ko bhi bhej diya gaya hai.")
+                    .setPositiveButton("Theek hai") { d, _ -> d.dismiss() }
+                    .setNegativeButton("Share karo") { _, _ ->
+                        try {
+                            val send = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, "Auto Bot crash log:\n\n$txt") }
+                            startActivity(Intent.createChooser(send, "Crash log share karo"))
+                        } catch (_: Exception) {}
+                    }
+                    .show()
+                // server ko bhi bhej do (dono URLs, jo chale)
+                val savedLog = txt
+                Thread {
+                    for (u in listOf(BASE + "/api/crash", "https://auto-bot-srv-al-noor-stores-projects.vercel.app/api/crash")) {
+                        try {
+                            val conn = java.net.URL(u).openConnection() as java.net.HttpURLConnection
+                            conn.requestMethod = "POST"; conn.doOutput = true
+                            conn.setRequestProperty("Content-Type", "application/json")
+                            conn.connectTimeout = 8000; conn.readTimeout = 8000
+                            val payload = org.json.JSONObject().put("log", savedLog)
+                                .put("device", android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL + " Android " + android.os.Build.VERSION.RELEASE)
+                            conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                            conn.responseCode
+                            conn.disconnect()
+                        } catch (_: Exception) {}
+                    }
+                }.start()
+                lf.writeText("") // ek baar dikhane ke baad log khali (naya crash fresh aayega)
+            }
+        } catch (_: Exception) {}
         setContentView(R.layout.activity_main)
         try {
             if (!Python.isStarted()) Python.start(AndroidPlatform(this))
@@ -233,6 +269,16 @@ class MainActivity : AppCompatActivity() {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)))
                     true
                 } else false
+            }
+            // purane WebView renderer crash → app zinda rahe
+            override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
+                runOnUiThread {
+                    try {
+                        appendTerm("\n⚠️ WebView renderer crash hua tha — recover ho gaya.\n(Asli fix site pe ho chuka hai, site dobara load karo)\n")
+                        showTerminal(true)
+                    } catch (_: Exception) {}
+                }
+                return true
             }
         }
 
