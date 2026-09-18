@@ -22,6 +22,8 @@ import android.widget.TextView
 import android.widget.Toast
 import android.widget.ScrollView
 import org.json.JSONObject
+import com.chaquo.python.Python
+import com.chaquo.python.android.AndroidPlatform
 import java.io.File
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -47,6 +49,53 @@ class MainActivity : AppCompatActivity() {
     private lateinit var termIn: EditText
     private val termBuf = StringBuilder()
 
+    // ---------- Python 3.11 engine (APK ke andar bundled) ----------
+    private fun runPython(code: String, fromChat: Boolean = false) {
+        appendTerm("\n>>> $code\n")
+        Thread {
+            var out = ""
+            try {
+                val py = Python.getInstance()
+                val io = py.getModule("io")
+                val buf = io.callAttr("StringIO")
+                val sys = py.getModule("sys")
+                sys.putAttr("stdout", buf)
+                sys.putAttr("stderr", buf)
+                py.getBuiltins().callAttr("exec", code)
+                out = buf.callAttr("getvalue").toString()
+                if (out.isBlank()) out = "✅ Python: done (no output)"
+            } catch (e: Exception) { out = "Python error: " + (e.message ?: "unknown") }
+            val res = out.trim().take(3000)
+            runOnUiThread {
+                appendTerm(res + "\n")
+                if (fromChat) chatReply(res)
+            }
+        }.start()
+    }
+
+    private fun pipInstall(pkg: String, fromChat: Boolean = false) {
+        appendTerm("\n$ pip install $pkg\n")
+        Thread {
+            var out = ""
+            try {
+                val py = Python.getInstance()
+                val io = py.getModule("io")
+                val buf = io.callAttr("StringIO")
+                val sys = py.getModule("sys")
+                sys.putAttr("stdout", buf); sys.putAttr("stderr", buf)
+                val mainFn = py.getModule("pip._internal.cli.main").getAttr("main")
+                mainFn.call(arrayOf("install", pkg.trim()))
+                out = buf.callAttr("getvalue").toString()
+                out = if (out.isBlank()) "✅ $pkg installed" else out
+            } catch (e: Exception) { out = "pip error: " + (e.message ?: "unknown") }
+            val res = out.trim().take(3000)
+            runOnUiThread {
+                appendTerm(res + "\n")
+                if (fromChat) chatReply(res)
+            }
+        }.start()
+    }
+
     // shell engine: real Android sh, background mein bot bhi use karta hai
     private fun runShell(cmd: String, fromChat: Boolean = false, label: String = "$") {
         appendTerm("\n$ $cmd\n")
@@ -54,6 +103,8 @@ class MainActivity : AppCompatActivity() {
             var out = ""
             try {
                 val cwd = File(getExternalFilesDir(null), "work").apply { mkdirs() }
+                if (cmd.trim().startsWith("py ")) { runPython(cmd.trim().substring(3).removeSurrounding("\""), fromChat); return@Thread }
+                if (cmd.trim().startsWith("pip install ")) { pipInstall(cmd.trim().substring(12), fromChat); return@Thread }
                 val p = ProcessBuilder("sh", "-c", cmd)
                     .directory(cwd)
                     .redirectErrorStream(true)
@@ -127,6 +178,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        if (!Python.isStarted()) Python.start(AndroidPlatform(this))
 
         webView = findViewById(R.id.webView)
         nativeScreen = findViewById(R.id.nativeScreen)
@@ -140,7 +192,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnTermRun).setOnClickListener { runShell(termIn.text.toString().trim()); termIn.setText("") }
         findViewById<Button>(R.id.btnTermClear).setOnClickListener { termBuf.setLength(0); termOut.text = "" }
         findViewById<Button>(R.id.btnTermClose).setOnClickListener { showTerminal(false) }
-        appendTerm("Auto Bot Terminal v1.6 — real Android shell (sh)\nWorking dir: " + File(getExternalFilesDir(null), "work").absolutePath + "\nCommands: ls, mkdir, echo, cat, rm, cp, mv, ps, df, date...\nChalo koi bhi command do!\n")
+        appendTerm("Auto Bot Terminal v1.6 — real Android shell (sh)\nWorking dir: " + File(getExternalFilesDir(null), "work").absolutePath + "\nShell: ls, mkdir, echo, cat, rm, cp, mv, ps, df...\nPython 3.11 BUILT-IN: 'py print(2+2)' | 'py import requests'\nPip: 'pip install <package>' (pure-python packages)\nChalo koi bhi command do!\n")
 
         webView.settings.apply {
             javaScriptEnabled = true
@@ -199,6 +251,8 @@ class MainActivity : AppCompatActivity() {
     private fun runCommand(low: String, msg: String): Boolean {
         if (low == "terminal" || low == "open terminal") { runOnUiThread { showTerminal(true) }; chatReply("🖥 Terminal khul gaya — screen pe command likho."); return true }
         if (low.startsWith("run ")) { runShell(msg.substring(4).trim(), fromChat = true); chatReply("⏳ Command chal raha hai terminal mein..."); return true }
+        if (low.startsWith("python ") || low.startsWith("py ")) { runPython(msg.substring(low.indexOf(' ') + 1).trim(), fromChat = true); return true }
+        if (low.startsWith("pip install ")) { pipInstall(msg.substring(12).trim(), fromChat = true); chatReply("⏳ pip install chal raha hai..."); return true }
         if (low.startsWith("cmd ")) { runShell(msg.substring(4).trim(), fromChat = true); chatReply("⏳ Command chal raha hai terminal mein..."); return true }
         if (low.startsWith("open ")) {
             val target = msg.substring(5).trim()
