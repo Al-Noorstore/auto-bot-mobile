@@ -31,6 +31,19 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 
+class CrashLogger(private val ctx: Context) : Thread.UncaughtExceptionHandler {
+    private val prev = Thread.getDefaultUncaughtExceptionHandler()
+    override fun uncaughtException(t: Thread, e: Throwable) {
+        try {
+            val log = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+                .format(java.util.Date()) + "\n" + e::class.java.name + ": " + e.message + "\n" +
+                e.stackTraceToString().take(4000) + "\n\n"
+            java.io.File(ctx.getExternalFilesDir(null), "crash_log.txt").appendText(log)
+        } catch (_: Exception) {}
+        prev?.uncaughtException(t, e)
+    }
+}
+
 class MainActivity : AppCompatActivity() {
 
     private val BASE = "https://auto-bot-al-noor-stores-projects.vercel.app"
@@ -50,21 +63,28 @@ class MainActivity : AppCompatActivity() {
     private val termBuf = StringBuilder()
 
     // ---------- Python 3.11 engine (APK ke andar bundled) ----------
+    private var pipDir: String = ""
+
+    private fun pythonReady(): Boolean {
+        return try {
+            Python.getInstance()
+            true
+        } catch (e: Exception) { false }
+    }
+
     private fun runPython(code: String, fromChat: Boolean = false) {
         appendTerm("\n>>> $code\n")
+        if (!pythonReady()) { val m = "❌ Python engine load nahi hui (install/storage check karo)"; appendTerm(m + "\n"); if (fromChat) chatReply(m); return }
         Thread {
             var out = ""
             try {
-                val py = Python.getInstance()
-                val io = py.getModule("io")
-                val buf = io.callAttr("StringIO")
-                val sys = py.getModule("sys")
-                sys.putAttr("stdout", buf)
-                sys.putAttr("stderr", buf)
-                py.getBuiltins().callAttr("exec", code)
-                out = buf.callAttr("getvalue").toString()
-                if (out.isBlank()) out = "✅ Python: done (no output)"
-            } catch (e: Exception) { out = "Python error: " + (e.message ?: "unknown") }
+                val runner = Python.getInstance().getModule("runner")
+                if (pipDir.isEmpty()) {
+                    pipDir = File(getExternalFilesDir(null), "pip").absolutePath
+                    runner.callAttr("run_code", "import sys; sys.path.insert(0, '" + pipDir + "')")
+                }
+                out = runner.callAttr("run_code", code).toString()
+            } catch (e: Exception) { out = "Python error: " + e.message }
             val res = out.trim().take(3000)
             runOnUiThread {
                 appendTerm(res + "\n")
@@ -75,19 +95,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun pipInstall(pkg: String, fromChat: Boolean = false) {
         appendTerm("\n$ pip install $pkg\n")
+        if (!pythonReady()) { val m = "❌ Python engine load nahi hui"; appendTerm(m + "\n"); if (fromChat) chatReply(m); return }
         Thread {
             var out = ""
             try {
-                val py = Python.getInstance()
-                val io = py.getModule("io")
-                val buf = io.callAttr("StringIO")
-                val sys = py.getModule("sys")
-                sys.putAttr("stdout", buf); sys.putAttr("stderr", buf)
-                val mainFn = py.getModule("pip._internal.cli.main").getAttr("main")
-                mainFn.call(arrayOf("install", pkg.trim()))
-                out = buf.callAttr("getvalue").toString()
-                out = if (out.isBlank()) "✅ $pkg installed" else out
-            } catch (e: Exception) { out = "pip error: " + (e.message ?: "unknown") }
+                if (pipDir.isEmpty()) pipDir = File(getExternalFilesDir(null), "pip").absolutePath
+                val runner = Python.getInstance().getModule("runner")
+                out = runner.callAttr("pip_install", pkg.trim(), pipDir).toString()
+            } catch (e: Exception) { out = "pip error: " + e.message }
             val res = out.trim().take(3000)
             runOnUiThread {
                 appendTerm(res + "\n")
@@ -177,8 +192,13 @@ class MainActivity : AppCompatActivity() {
     // ---------- lifecycle ----------
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Thread.setDefaultUncaughtExceptionHandler(CrashLogger(this))
         setContentView(R.layout.activity_main)
-        if (!Python.isStarted()) Python.start(AndroidPlatform(this))
+        try {
+            if (!Python.isStarted()) Python.start(AndroidPlatform(this))
+        } catch (e: Exception) {
+            Toast.makeText(this, "Python engine load fail: " + e.message, Toast.LENGTH_LONG).show()
+        }
 
         webView = findViewById(R.id.webView)
         nativeScreen = findViewById(R.id.nativeScreen)
