@@ -323,9 +323,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun isOnline(): Boolean {
-        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val n = cm.activeNetworkInfo
-        return n != null && n.isConnected
+        return try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val n = cm.activeNetworkInfo
+            n != null && n.isConnected
+        } catch (e: Exception) { true } // permission/network fail ho to bhi site load karne ki koshish karo — crash kabhi nahi
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
