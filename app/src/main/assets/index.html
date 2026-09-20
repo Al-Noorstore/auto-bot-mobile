@@ -456,10 +456,33 @@ if (chatHist.length) {
 <script>
   window.__localBotReply = function (t) { $('typing') && $('typing').remove(); bubble('bot', t); chatHist.push({ u: window.__lastLocalMsg || '', b: t }); saveChat(); };
   if (window.AutoBotNative) {
-    document.body.insertAdjacentHTML('afterbegin', '<div style="background:#0ea5b7;color:#04222a;padding:6px 14px;font-size:12px;font-weight:600;text-align:center">📱 Native mode ON — contacts phone mein save honge</div>');
+    document.body.insertAdjacentHTML('afterbegin', '<div style="position:fixed;top:0;left:0;right:0;width:100%;box-sizing:border-box;z-index:9999;background:#0ea5b7;color:#04222a;padding:6px 14px;font-size:12px;font-weight:600;text-align:center">📱 Native mode ON — contacts phone mein save honge</div>');
+    var _nb = document.body.firstElementChild;
+    if (_nb) document.body.style.paddingTop = _nb.offsetHeight + 'px';
     var mo = document.getElementById('sidebar');
     if (mo) mo.insertAdjacentHTML('beforeend', '<button class="nav-item" onclick="AutoBotNative.openTerminal()"><span class="nav-ico">🖥️</span> Terminal</button><button class="nav-item" onclick="AutoBotNative.openNativePanel()"><span class="nav-ico">⚡</span> Native Powers</button>');
   }
+  // AutoBotNative cross-session history sync (online <-> offline dono ek hi chat history)
+  (function () {
+    if (!window.AutoBotNative) return;
+    try {
+      var origSetItem = localStorage.setItem.bind(localStorage);
+      localStorage.setItem = function (k, v) {
+        origSetItem(k, v);
+        if (k === 'ab_chat') { try { AutoBotNative.syncHistory(v); } catch (e) {} }
+      };
+      if (!sessionStorage.getItem('ab_hydrated')) {
+        sessionStorage.setItem('ab_hydrated', '1');
+        var mineRaw = localStorage.getItem('ab_chat');
+        var mineArr = mineRaw ? JSON.parse(mineRaw) : [];
+        if (mineArr.length === 0) {
+          var sharedRaw = AutoBotNative.getSharedHistory();
+          var sharedArr = sharedRaw ? JSON.parse(sharedRaw) : [];
+          if (sharedArr.length > 0) { localStorage.setItem('ab_chat', JSON.stringify(sharedArr)); location.reload(); }
+        }
+      }
+    } catch (e) {}
+  })();
 </script>
 </body>
 </html>

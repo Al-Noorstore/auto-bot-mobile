@@ -45,6 +45,39 @@ class CrashLogger(private val ctx: Context) : Thread.UncaughtExceptionHandler {
 class MainActivity : AppCompatActivity() {
 
     private val BASE = "https://auto-bot-al-noor-stores-projects.vercel.app"
+
+    // Universal post-load fix (online external site + offline bundled copy dono pe chalta hai):
+    // (1) "Native mode ON" banner ko full-height layout-breaking block bug se bachao.
+    // (2) Chat history online<->offline dono taraf sync — AutoBotNative.syncHistory/getSharedHistory se.
+    private val PAGE_FIX_JS = """
+        (function(){
+          try {
+            document.querySelectorAll('body > div[style*="0ea5b7"]').forEach(function(b){
+              b.style.position='fixed'; b.style.top='0'; b.style.left='0'; b.style.right='0';
+              b.style.width='100%'; b.style.boxSizing='border-box'; b.style.zIndex='9999';
+              document.body.style.paddingTop = b.offsetHeight + 'px';
+            });
+            if (window.AutoBotNative && !window.__abSyncPatched) {
+              window.__abSyncPatched = true;
+              var origSetItem = localStorage.setItem.bind(localStorage);
+              localStorage.setItem = function(k, v) {
+                origSetItem(k, v);
+                if (k === 'ab_chat') { try { AutoBotNative.syncHistory(v); } catch(e) {} }
+              };
+              if (!sessionStorage.getItem('ab_hydrated')) {
+                sessionStorage.setItem('ab_hydrated', '1');
+                var mineRaw = localStorage.getItem('ab_chat');
+                var mineArr = mineRaw ? JSON.parse(mineRaw) : [];
+                if (mineArr.length === 0) {
+                  var sharedRaw = AutoBotNative.getSharedHistory();
+                  var sharedArr = sharedRaw ? JSON.parse(sharedRaw) : [];
+                  if (sharedArr.length > 0) { localStorage.setItem('ab_chat', JSON.stringify(sharedArr)); location.reload(); }
+                }
+              }
+            }
+          } catch (e) {}
+        })();
+    """
     private val REQ_CALL = 101
     private val REQ_CONTACTS = 102
 
@@ -247,6 +280,11 @@ class MainActivity : AppCompatActivity() {
         }
         webView.addJavascriptInterface(NativeBridge(), "AutoBotNative")
         webView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView, url: String) {
+                super.onPageFinished(view, url)
+                view.evaluateJavascript(PAGE_FIX_JS, null)
+            }
+
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val u = request.url.toString()
                 return if (u.startsWith("tel:") || u.startsWith("https://wa.me") || u.startsWith("mailto:")) {
@@ -453,6 +491,21 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun openAdminPanel() {
             runOnUiThread { startActivity(Intent(this@MainActivity, AdminPanelActivity::class.java)) }
+        }
+
+        @JavascriptInterface
+        fun syncHistory(json: String) {
+            try {
+                getSharedPreferences("autobot", Context.MODE_PRIVATE).edit()
+                    .putString("shared_chat_cache", json).apply()
+            } catch (e: Exception) { /* ignore */ }
+        }
+
+        @JavascriptInterface
+        fun getSharedHistory(): String {
+            return try {
+                getSharedPreferences("autobot", Context.MODE_PRIVATE).getString("shared_chat_cache", "[]") ?: "[]"
+            } catch (e: Exception) { "[]" }
         }
 
         @JavascriptInterface
