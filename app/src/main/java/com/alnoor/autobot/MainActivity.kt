@@ -336,6 +336,34 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun runCommand(low: String, msg: String): Boolean {
+        if (low == "admin" || low == "admin panel") { runOnUiThread { startActivity(Intent(this, AdminPanelActivity::class.java)) }; chatReply("🛡️ Admin Panel khul gaya — API keys, Ollama, models sab wahan."); return true }
+        if (low.startsWith("ask ")) {
+            val q = msg.substring(4).trim()
+            if (q.isBlank()) { chatReply("Sawal likho: ask <sawal>"); return true }
+            chatReply("🤖 Soch raha hoon...")
+            Thread { val ans = AIBrain.ask(this, q); appendTerm(ans) }.start()
+            return true
+        }
+        if (low.startsWith("transformer")) {
+            val rest = low.removePrefix("transformer").trim()
+            when {
+                rest.isEmpty() || rest == "list" -> appendTerm(ModelStore.list(this))
+                rest.startsWith("download") -> {
+                    val m = ModelStore.find(rest.removePrefix("download").trim())
+                    if (m == null) { appendTerm("❌ Model samajh nahi aaya — 'transformer list' likho."); return true }
+                    appendTerm("⬇️ ${m.name} (${m.size}) download shuru...")
+                    Thread { appendTerm(ModelStore.download(this, m) { p -> appendTerm(p) }) }.start()
+                }
+                rest.startsWith("delete") -> {
+                    val m = ModelStore.find(rest.removePrefix("delete").trim())
+                    if (m == null) { appendTerm("❌ Model samajh nahi aaya — 'transformer list' likho."); return true }
+                    appendTerm(ModelStore.delete(this, m))
+                }
+                else -> appendTerm(ModelStore.list(this))
+            }
+            return true
+        }
+        if (low == "keys" || low == "key list") { appendTerm(KeyStore.load(this).joinToString("\n") { (if (it.active) "🟢 " else "⚪ ") + it.label + " [" + it.provider + "]" }.ifBlank { "❌ Koi key nahi — 'admin' likho aur key add karo." }); return true }
         if (low == "terminal" || low == "open terminal") { runOnUiThread { showTerminal(true) }; chatReply("🖥 Terminal khul gaya — screen pe command likho."); return true }
         if (low.startsWith("run ")) { runShell(msg.substring(4).trim(), fromChat = true); chatReply("⏳ Command chal raha hai terminal mein..."); return true }
         if (low.startsWith("python ") || low.startsWith("py ")) { runPython(msg.substring(low.indexOf(' ') + 1).trim(), fromChat = true); return true }
@@ -420,6 +448,11 @@ class MainActivity : AppCompatActivity() {
                 inputPhone.setText(phone)
                 autoCall()
             }
+        }
+
+        @JavascriptInterface
+        fun openAdminPanel() {
+            runOnUiThread { startActivity(Intent(this@MainActivity, AdminPanelActivity::class.java)) }
         }
 
         @JavascriptInterface

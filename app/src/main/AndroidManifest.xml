@@ -9,8 +9,9 @@
 
     <application
         android:label="@string/app_label"
-        android:icon="@android:drawable/sym_def_app_icon"
+        android:icon="@mipmap/ic_launcher"
         android:theme="@style/Theme.AppCompat.NoActionBar">
+        <activity android:name=".AdminPanelActivity" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
