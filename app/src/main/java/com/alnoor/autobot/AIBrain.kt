@@ -78,10 +78,11 @@ object AIBrain {
         val model = if (k.model.isNotBlank()) k.model else "gemini-2.0-flash"
         val url = k.base.trimEnd('/') + "/v1beta/models/$model:generateContent?key=" +
             java.net.URLEncoder.encode(k.key, "UTF-8")
-        val body = JSONObject()
-            .put("contents", org.json.JSONArray()
-                .put(JSONObject().put("parts", org.json.JSONArray()
-                    .put(JSONObject().put("text", q))))
+        val msgPart = org.json.JSONObject().put("text", q)
+        val partsArr = org.json.JSONArray().put(msgPart)
+        val contentsItem = org.json.JSONObject().put("parts", partsArr)
+        val contentsArr = org.json.JSONArray().put(contentsItem)
+        val body = org.json.JSONObject().put("contents", contentsArr)
         val (code, text) = http(url, "POST", emptyMap(), body.toString())
         if (code !in 200..299) return "❌ Gemini error (HTTP $code): ${text.take(200)}"
         val candidates = JSONObject(text).optJSONArray("candidates")

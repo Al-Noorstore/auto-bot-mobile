@@ -284,14 +284,8 @@ class AdminPanelActivity : AppCompatActivity() {
                     bar.visibility = View.VISIBLE
                     thread {
                         val res = ModelStore.download(this, m) { p ->
-                            runOnUiThread { (bar.getChildAt(0) as? ProgressBar)?.progress = 0
-                                c.getChildAt(1) as? TextView ?: return@runOnUiThread
-                            }
-                            runOnUiThread {
-                                // progress text % parse
-                                val pct = Regex("(\\d+)%").find(p)?.groupValues?.get(1)?.toIntOrNull() ?: 0
-                                bar.progress = pct
-                            }
+                            val pct = Regex("(\\d+)%").find(p)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+                            runOnUiThread { bar.progress = pct }
                         }
                         runOnUiThread {
                             bar.visibility = View.GONE
