@@ -87,6 +87,28 @@ class MainActivity : AppCompatActivity() {
                 }).observe(_msgs, { childList: true });
               }
             }
+            // v2.8: online/live page send() ko Native Offline Brain se connect karo.
+            if (window.AutoBotNative && typeof window.send === 'function' && !window.__abNativeSendPatched) {
+              window.__abNativeSendPatched = true;
+              var _abOriginalSend = window.send;
+              window.send = async function () {
+                try {
+                  var _inp = document.getElementById('msg');
+                  var _m = _inp ? (_inp.value || '').trim() : '';
+                  if (_m && AutoBotNative.handleChatCommand(_m)) {
+                    window.__lastLocalMsg = _m;
+                    _inp.value = '';
+                    if (typeof autoGrow === 'function') autoGrow();
+                    if (typeof setSend === 'function') setSend();
+                    var _empty = document.getElementById('empty'); if (_empty) _empty.style.display = 'none';
+                    if (typeof bubble === 'function') bubble('user', _m);
+                    if (typeof typing === 'function') typing();
+                    return;
+                  }
+                } catch (e) {}
+                return _abOriginalSend.apply(this, arguments);
+              };
+            }
             // v2.7: online sidebar mein Settings button
             try {
               var _sb = document.getElementById('sidebar');
@@ -243,9 +265,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun chatReply(text: String) {
-        try {
-            webView.evaluateJavascript("window.__localBotReply(" + JSONObject.quote(text) + ")", null)
-        } catch (e: Exception) { appendTerm("[chat-reply-fail]\n" + text) }
+        // JS bridge WebView thread par hota hai; evaluateJavascript UI thread par zaroori hai.
+        runOnUiThread {
+            try { webView.evaluateJavascript("window.__localBotReply(" + JSONObject.quote(text) + ")", null) }
+            catch (e: Exception) { appendTerm("[chat-reply-fail]\n" + text) }
+        }
     }
 
     private fun showTerminal(show: Boolean) {
@@ -780,12 +804,14 @@ class MainActivity : AppCompatActivity() {
 
     // ---------- v2.6: chat reply with buttons ----------
     private fun chatReplyEx(text: String, buttonsJson: String) {
-        try {
-            webView.evaluateJavascript(
-                "window.__localBotReplyEx && window.__localBotReplyEx(" + JSONObject.quote(text) + "," + buttonsJson + ")",
-                null
-            )
-        } catch (e: Exception) { chatReply(text) }
+        runOnUiThread {
+            try {
+                webView.evaluateJavascript(
+                    "window.__localBotReplyEx && window.__localBotReplyEx(" + JSONObject.quote(text) + "," + buttonsJson + ")",
+                    null
+                )
+            } catch (e: Exception) { chatReply(text) }
+        }
     }
 
     private fun status(msg: String) { statusText.text = msg }
