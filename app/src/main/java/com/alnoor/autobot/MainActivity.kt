@@ -729,9 +729,9 @@ class MainActivity : AppCompatActivity() {
         } else {
             runOnUiThread {
                 try {
-                    val i = Intent(android.app.admin.DeviceAdminReceiver.ACTION_ADD_DEVICE_ADMIN).apply {
-                        putExtra(android.app.admin.DeviceAdminReceiver.EXTRA_DEVICE_ADMIN, comp)
-                        putExtra(android.app.admin.DeviceAdminReceiver.EXTRA_ADD_EXPLANATION, "Auto Bot ko 'lock my phone' command se phone lock karne ki permission chahiye. Sirf lock — koi aur power nahi.")
+                    val i = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+                        putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, comp)
+                        putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Auto Bot ko 'lock my phone' command se phone lock karne ki permission chahiye. Sirf lock — koi aur power nahi.")
                     }
                     startActivity(i)
                 } catch (e: Exception) { Toast.makeText(this, "Admin activate fail: " + e.message, Toast.LENGTH_LONG).show() }
