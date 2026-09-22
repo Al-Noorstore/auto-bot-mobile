@@ -331,13 +331,13 @@ object OfflineBrain {
         // ---------- v2.7: GREETING (assalam/hi/hello) ----------
         val bare = low.replace(Regex("[^a-z ]"), "").trim()
         if (bare in setOf("hi", "hello", "hey", "salam", "assalam o alaikum", "assalam alaikum", "assalamualaikum", "aoa", "hy", "hello bot", "hi bot", "salam bot") && prefs(ctx).getBoolean("brain_greeting", true)) {
-            r.text = "Assalam-o-Alaikum! 👋 Main Auto Bot hoon — aap ka apna assistant.\nBina internet/key bhi chalta hoon: contacts save, call, call end, phone lock, apps kholna, YouTube search.\nLikho: "save Ali 03001234567 bhai" ya "call my mamo".\nBataun kis ne banaya mujhe? — 🤖 Wishal Noor ne!"
+            r.text = "Assalam-o-Alaikum! 👋 Main Auto Bot hoon — aap ka apna assistant.\nBina internet/key bhi chalta hoon: contacts save, call, call end, phone lock, apps kholna, YouTube search.\nLikho: \"save Ali 03001234567 bhai\" ya \"call my mamo\".\nBataun kis ne banaya mujhe? — 🤖 Wishal Noor ne!"
             return r
         }
 
         // ---------- v2.7: IDENTITY — kis ne banaya ----------
-        if (Regex("kis\s*ne|who\s*(?:made|created|built|developed)|developer|creator|malik|banaya|banaua|banaiya|kon\s*bnaya|kisne").find(low) != null && Regex("banaya|banaua|made|created|built|developed|developer|creator|malik").find(low) != null) {
-            val personalQ = Regex("personal|private|family|biwi|wife|umar|age|address|phone\s*number|number|kahan|where|reet|detail|salary|paisa|money").find(low) != null
+        if (Regex("kis\\s*ne|who\\s*(?:made|created|built|developed)|developer|creator|malik|banaya|banaua|banaiya|kon\\s*bnaya|kisne").find(low) != null && Regex("banaya|banaua|made|created|built|developed|developer|creator|malik").find(low) != null) {
+            val personalQ = Regex("personal|private|family|biwi|wife|umar|age|address|phone\\s*number|number|kahan|where|reet|detail|salary|paisa|money").find(low) != null
             r.text = if (personalQ) "🤖 Mujhe Wishal Noor ne banaya hai — lekin unki personal details ke bare mein mujhe kuch pata nahi (na number, na address, na family). Ye main share nahi kar sakta."
             else "🤖 Mujhe Wishal Noor ne banaya hai. Main Auto Bot hoon — aap ka apna offline assistant."
             return r

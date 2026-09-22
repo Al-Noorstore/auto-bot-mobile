@@ -15,7 +15,7 @@ object KeyStore {
     data class ApiKey(
         val provider: String,
         val label: String,
-        val key: String,
+        var key: String,
         val base: String,
         val model: String,
         var active: Boolean = false,

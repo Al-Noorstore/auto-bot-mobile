@@ -59,10 +59,9 @@ class SettingsActivity : AppCompatActivity() {
                 text = label; tag = tag
                 setTextColor(textC); setBackgroundColor(Color.parseColor("#1d1d1d"))
                 textSize = 13f; setPadding(20, 26, 20, 26)
-                layout = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
             b.setOnClickListener { showTab(tag); }
-            tabs.addView(b)
+            tabs.addView(b, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             return b
         }
         root.addView(tabs)
