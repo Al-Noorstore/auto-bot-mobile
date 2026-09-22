@@ -56,7 +56,7 @@ class SettingsActivity : AppCompatActivity() {
         val tabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         fun tabBtn(label: String, tag: String): Button {
             val b = Button(this).apply {
-                text = label; tag = tag
+                text = label; setTag(tag)
                 setTextColor(textC); setBackgroundColor(Color.parseColor("#1d1d1d"))
                 textSize = 13f; setPadding(20, 26, 20, 26)
             }
