@@ -18,7 +18,8 @@ object KeyStore {
         val key: String,
         val base: String,
         val model: String,
-        var active: Boolean = false
+        var active: Boolean = false,
+        var enabled: Boolean = true
     )
 
     // Provider defaults — user sirf key paste kare, baaki khud fill ho jata hai
@@ -64,7 +65,8 @@ object KeyStore {
                         o.optString("key", ""),
                         o.optString("base", ""),
                         o.optString("model", ""),
-                        o.optBoolean("active", false)
+                        o.optBoolean("active", false),
+                        o.optBoolean("enabled", true)
                     )
                 )
             }
@@ -77,7 +79,7 @@ object KeyStore {
         for (k in keys) {
             arr.put(JSONObject().put("provider", k.provider).put("label", k.label)
                 .put("key", k.key).put("base", k.base).put("model", k.model)
-                .put("active", k.active))
+                .put("active", k.active).put("enabled", k.enabled))
         }
         file(ctx).writeText(arr.toString())
     }
@@ -112,4 +114,18 @@ object KeyStore {
     }
 
     fun active(ctx: Context): ApiKey? = load(ctx).firstOrNull { it.active }
+
+    /** v2.7: per-key ON/OFF — sirf enabled keys AI tasks/fallback ke liye use hoti hain */
+    fun setEnabled(ctx: Context, label: String, on: Boolean) {
+        val keys = load(ctx)
+        keys.forEach { if (it.label == label) it.enabled = on }
+        save(ctx, keys)
+    }
+
+    fun update(ctx: Context, label: String, newKey: String): String {
+        val keys = load(ctx)
+        keys.forEach { if (it.label == label && newKey.isNotBlank()) it.key = newKey.trim() }
+        save(ctx, keys)
+        return "✅ Key update ho gayi: $label"
+    }
 }

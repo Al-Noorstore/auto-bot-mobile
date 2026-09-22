@@ -328,6 +328,64 @@ object OfflineBrain {
             return r
         }
 
+        // ---------- v2.7: GREETING (assalam/hi/hello) ----------
+        val bare = low.replace(Regex("[^a-z ]"), "").trim()
+        if (bare in setOf("hi", "hello", "hey", "salam", "assalam o alaikum", "assalam alaikum", "assalamualaikum", "aoa", "hy", "hello bot", "hi bot", "salam bot") && prefs(ctx).getBoolean("brain_greeting", true)) {
+            r.text = "Assalam-o-Alaikum! 👋 Main Auto Bot hoon — aap ka apna assistant.\nBina internet/key bhi chalta hoon: contacts save, call, call end, phone lock, apps kholna, YouTube search.\nLikho: "save Ali 03001234567 bhai" ya "call my mamo".\nBataun kis ne banaya mujhe? — 🤖 Wishal Noor ne!"
+            return r
+        }
+
+        // ---------- v2.7: IDENTITY — kis ne banaya ----------
+        if (Regex("kis\s*ne|who\s*(?:made|created|built|developed)|developer|creator|malik|banaya|banaua|banaiya|kon\s*bnaya|kisne").find(low) != null && Regex("banaya|banaua|made|created|built|developed|developer|creator|malik").find(low) != null) {
+            val personalQ = Regex("personal|private|family|biwi|wife|umar|age|address|phone\s*number|number|kahan|where|reet|detail|salary|paisa|money").find(low) != null
+            r.text = if (personalQ) "🤖 Mujhe Wishal Noor ne banaya hai — lekin unki personal details ke bare mein mujhe kuch pata nahi (na number, na address, na family). Ye main share nahi kar sakta."
+            else "🤖 Mujhe Wishal Noor ne banaya hai. Main Auto Bot hoon — aap ka apna offline assistant."
+            return r
+        }
+        if (Regex("wishal|noor").find(low) != null && Regex("personal|private|detail|bare mein|about").find(low) != null) {
+            r.text = "🤖 Wishal Noor mere creator hain — unki personal details ke bare mein mujhe pata nahi."
+            return r
+        }
+
+        // ---------- v2.7: TRANSFORMER download (specs suggest + approval) ----------
+        if ((low.contains("transformer") || low.contains("model")) && (low.contains("download") || low.contains("downlad") || low.contains("dl") || low.contains("chahiye") || low.contains("lana"))) {
+            val am = ctx.getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+            val mi = android.app.ActivityManager.MemoryInfo()
+            am.getMemoryInfo(mi)
+            val ramGb = mi.totalMem / (1024.0 * 1024.0 * 1024.0)
+            val (sug, why) = when {
+                ramGb < 3 -> Pair("SmolLM2-135M", "aapke phone ki RAM ${"%.1f".format(ramGb)}GB hai — sabse halka model smooth chalega")
+                ramGb < 6 -> Pair("Qwen2.5-0.5B", "aapke phone ki RAM ${"%.1f".format(ramGb)}GB hai — beech ka model best balance hai")
+                else -> Pair("TinyLlama-1.1B", "aapke phone ki RAM ${"%.1f".format(ramGb)}GB hai — sabse smart wala le sakta ho")
+            }
+            val models = ModelStore.downloaded(ctx)
+            val have = models.joinToString(", ") { it.removeSuffix(".gguf") }
+            r.text = "📦 Transformer download!\n\n📱 Phone specs dekh kar mera suggestion: $sug — kyunke $why.\n\nOptions:\n• SmolLM2-135M (~145MB, sabse halka)\n• Qwen2.5-0.5B (~400MB, balanced)\n• TinyLlama-1.1B (~670MB, sabse smart)" +
+                (if (models.isNotEmpty()) "\n\n✅ Already downloaded: $have" else "") +
+                "\n\nDownload karun? Neeche button dabao ya naam bolo (e.g. \"smollm2 download karo\")."
+            r.buttons.add(BrainButton("⬇️ Download $sug", "dlmodel", sug))
+            return r
+        }
+
+        // ---------- v2.7: OLLAMA offline connect / model select ----------
+        if (Regex("connect|laga|lagao|use|select").find(low) != null && (low.contains("ollama") || low.contains("offline") || low.contains("model") || low.contains("transformer")) && Regex("connect|laga|lagao").find(low) != null) {
+            val models = ModelStore.downloaded(ctx)
+            if (models.isEmpty()) {
+                r.text = "📭 Abhi koi offline model download nahi hai.\n📱 'transformer download' bolo — main phone ke specs ke hisaab se best model suggest karunga, approval ke baad download ho jayega."
+            } else {
+                // user ne naam bola? e.g. "smollm2 connect karo"
+                val named = ModelStore.presets.firstOrNull { m -> low.replace(" ", "").contains(m.name.lowercase().replace(" ", "").replace("-", "")) || m.name.lowercase().split("-")[0].let { low.contains(it.lowercase()) } }
+                if (named != null && models.any { it.startsWith(named.file.removeSuffix(".gguf").split("-")[0]) }) {
+                    prefs(ctx).edit().putString("brain_offline_model", named.name).apply()
+                    r.text = "✅ Offline model connected: ${named.name}\n(Settings → Ollama tab se kabhi bhi change karo)"
+                } else {
+                    val list = models.joinToString("\n") { "• " + it.removeSuffix(".gguf") }
+                    r.text = "🔌 Ye offline models aapke phone mein downloaded hain — kaunsa connect karun? Naam bolo:\n$list\n\n(Settings → Ollama tab se bhi select kar sakte ho)"
+                }
+            }
+            return r
+        }
+
         // ---------- 10) CONTACTS list ----------
         if (low == "contacts" || low == "contact list" || low == "my contacts" || low == "meray contacts" || low == "mere contacts" || (low == "saved contacts")) {
             val contacts = loadContacts(ctx)

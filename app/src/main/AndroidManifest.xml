@@ -13,6 +13,7 @@
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/Theme.AppCompat.NoActionBar">
         <activity android:name=".AdminPanelActivity" android:exported="false" />
+        <activity android:name=".SettingsActivity" android:exported="false" />
         <receiver
             android:name=".AdminReceiver"
             android:permission="android.permission.BIND_DEVICE_ADMIN"

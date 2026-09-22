@@ -59,19 +59,48 @@ object AIBrain {
         }
     }
 
-    /** Chat se sawal — active key use hoti hai. Background thread se call karo. */
+    /**
+     * v2.7 AUTO-FALLBACK CHAIN:
+     * 1) Active key se try → 2) baaki ON keys se try → 3) sab fail (credit/invalid/off) →
+     * natural reply: API key connect karo ya Ollama offline model; agar model connected hai to batado.
+     */
     fun ask(ctx: Context, question: String): String {
-        val k = KeyStore.active(ctx)
-            ?: return "❌ Koi AI key active nahi. Admin Panel kholo (chat mein 'admin' likho), API key add karo ya Ollama set karo."
-        return try {
-            when (k.provider) {
-                "Gemini" -> gemini(k, question)
-                "Ollama (PC/Local)", "Ollama Cloud" -> ollama(k, question)
-                else -> openaiCompatible(k, question)
+        val keys = KeyStore.load(ctx).filter { it.enabled && it.key.isNotBlank() }
+        val active = keys.firstOrNull { it.active } ?: keys.firstOrNull()
+        if (active != null) {
+            tryAsk(active, question)?.let { return it }
+            for (k in keys) {
+                if (k.label == active.label) continue
+                tryAsk(k, question)?.let { return "(🔑 $k.label se aaya — active key kaam nahi kar rahi thi)\n$it" }
             }
-        } catch (e: Exception) {
-            "❌ AI call fail: ${e.message}"
         }
+        return failReply(ctx, question)
+    }
+
+    private fun tryAsk(k: KeyStore.ApiKey, q: String): String? {
+        return try {
+            val ans = when (k.provider) {
+                "Gemini" -> gemini(k, q)
+                "Ollama (PC/Local)", "Ollama Cloud" -> ollama(k, q)
+                else -> openaiCompatible(k, q)
+            }
+            // error wale jawab ko fail maano (credit khatam / key invalid / network)
+            if (ans.startsWith("❌") || ans.startsWith("⚠️")) null else ans
+        } catch (e: Exception) { null }
+    }
+
+    private fun failReply(ctx: Context, question: String): String {
+        val off = ctx.getSharedPreferences("autobot", Context.MODE_PRIVATE)
+            .getString("brain_offline_model", null)
+        val sb = StringBuilder()
+        sb.append("🧠 Is task ke liye AI jawab chahiye jo abhi available nahi hai — API key kaam nahi kar rahi ya uska credit khatam ho gaya hai.\n\n")
+        sb.append("Kya kar sakte ho:\n• ⚙️ Settings kholo (chat mein 'settings' likho) → API Keys tab → nayi ya working key add karo\n")
+        if (off != null) {
+            sb.append("• Ya Ollama offline model: aapka model ($off) already selected hai — Settings → Ollama tab.\n(⚠️ Mobile pe model ka ENGINE chalana agle version mein aayega — filhal AI task ke liye API key best rahegi.)")
+        } else {
+            sb.append("• Ya offline model download karo: chat mein 'transformer download' likho — main aapke phone ke specs ke hisaab se best model suggest karunga aur aapki approval se download karunga.\n(⚠️ Model ka ENGINE chalana agle version mein aayega — filhal AI task ke liye API key best rahegi.)")
+        }
+        return sb.toString()
     }
 
     private fun gemini(k: KeyStore.ApiKey, q: String): String {

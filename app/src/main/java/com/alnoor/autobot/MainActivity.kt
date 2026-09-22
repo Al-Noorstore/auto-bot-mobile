@@ -87,6 +87,18 @@ class MainActivity : AppCompatActivity() {
                 }).observe(_msgs, { childList: true });
               }
             }
+            // v2.7: online sidebar mein Settings button
+            try {
+              var _sb = document.getElementById('sidebar');
+              if (_sb && window.AutoBotNative && !document.getElementById('ab-settings-btn')) {
+                var _sbB = document.createElement('button');
+                _sbB.id = 'ab-settings-btn';
+                _sbB.className = _sb.querySelector('.nav-item') ? _sb.querySelector('.nav-item').className : 'nav-item';
+                _sbB.innerHTML = '⚙️ Settings';
+                _sbB.onclick = function () { AutoBotNative.openSettings(); };
+                _sb.appendChild(_sbB);
+              }
+            } catch (e) {}
             // v2.6 offline-brain buttons (online site pe bhi)
             if (!window.__localBotReplyEx) {
               window.__localBotReplyEx = function (t, btns) {
@@ -112,6 +124,7 @@ class MainActivity : AppCompatActivity() {
                 if (a === 'call') AutoBotNative.callNumber(ph);
                 else if (a === 'endcall') AutoBotNative.endCall();
                 else if (a === 'wa') AutoBotNative.openWhatsApp(ph);
+                else if (a === 'dlmodel' && AutoBotNative.downloadModel) AutoBotNative.downloadModel(ph);
                 el.disabled = true; el.style.opacity = '0.5';
               };
             }
@@ -445,6 +458,11 @@ class MainActivity : AppCompatActivity() {
                         "lock" -> runOnUiThread { lockPhone(false) }
                         "openapp" -> runOnUiThread { openAppByName(a.arg) }
                         "phonebook" -> runOnUiThread { brainSavePhonebook(a.arg, a.arg2) }
+                        "dlmodel" -> {
+                            val m = ModelStore.find(a.arg)
+                            if (m == null) chatReply("❌ Model samajh nahi aaya: ${a.arg}")
+                            else { chatReply("⬇️ ${m.name} (${m.size}) download shuru..."); Thread { appendTerm(ModelStore.download(this, m) { p -> appendTerm(p) }) }.start() }
+                        }
                     }
                 }
                 chatReplyEx(br.text, br.buttonsJson())
@@ -452,6 +470,7 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (e: Exception) { /* brain fail = normal flow */ }
         if (low == "admin" || low == "admin panel") { runOnUiThread { startActivity(Intent(this, AdminPanelActivity::class.java)) }; chatReply("🛡️ Admin Panel khul gaya — API keys, Ollama, models sab wahan."); return true }
+        if (low == "settings" || low == "setting" || low == "⚙️" || low.contains("setting khol") || low.contains("settings khol")) { runOnUiThread { startActivity(Intent(this, SettingsActivity::class.java)) }; chatReply("⚙️ Settings khul gaya — Offline Brain, API Keys, Ollama, Transformers tabs wahan hain."); return true }
         if (low.startsWith("ask ")) {
             val q = msg.substring(4).trim()
             if (q.isBlank()) { chatReply("Sawal likho: ask <sawal>"); return true }
@@ -587,6 +606,18 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun endCall() { runOnUiThread { endCallAction(false) } }
+
+        @JavascriptInterface
+        fun openSettings() { runOnUiThread { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) } }
+
+        @JavascriptInterface
+        fun downloadModel(name: String) {
+            val m = ModelStore.find(name)
+            if (m == null) { runOnUiThread { chatReply("❌ Model samajh nahi aaya: $name") }; return }
+            Thread {
+                appendTerm(ModelStore.download(this@MainActivity, m) { p -> appendTerm(p) })
+            }.start()
+        }
 
         @JavascriptInterface
         fun lockPhone() { runOnUiThread { lockPhone(false) } }
