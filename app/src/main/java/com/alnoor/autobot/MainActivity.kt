@@ -21,6 +21,9 @@ import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import android.widget.ScrollView
+import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
+import android.telecom.TelecomManager
 import org.json.JSONObject
 import java.io.File
 import java.io.BufferedReader
@@ -84,6 +87,34 @@ class MainActivity : AppCompatActivity() {
                 }).observe(_msgs, { childList: true });
               }
             }
+            // v2.6 offline-brain buttons (online site pe bhi)
+            if (!window.__localBotReplyEx) {
+              window.__localBotReplyEx = function (t, btns) {
+                var tp = document.getElementById('typing'); if (tp) tp.remove();
+                var msgs = document.getElementById('msgs'); if (!msgs) return;
+                var d = document.createElement('div'); d.className = 'msg bot';
+                function e(x) { var z = document.createElement('div'); z.textContent = x; return z.innerHTML; }
+                var av = (typeof LOGO_SVG !== 'undefined') ? LOGO_SVG : '';
+                var html = '<span class="av">' + av + '</span><div class="bubble">' + e(t);
+                (btns || []).forEach(function (b) {
+                  var col = (b.action === 'endcall') ? '#ef4146' : '#10a37f';
+                  html += '<div style="margin-top:8px"><button style="background:' + col + ';color:#fff;border:none;border-radius:20px;padding:9px 18px;font-size:14px;font-weight:600;cursor:pointer" onclick="abBtn(this)" data-action="' + e(b.action) + '" data-phone="' + e(b.phone || '') + '">' + e(b.label) + '</button></div>';
+                });
+                html += '</div>';
+                d.innerHTML = html;
+                msgs.appendChild(d);
+                var v = document.getElementById('view'); if (v) v.scrollTop = v.scrollHeight;
+                if (typeof chatHist !== 'undefined' && typeof saveChat === 'function') { chatHist.push({ u: window.__lastLocalMsg || '', b: t }); saveChat(); }
+              };
+              window.abBtn = function (el) {
+                if (!window.AutoBotNative) return;
+                var a = el.getAttribute('data-action'), ph = el.getAttribute('data-phone');
+                if (a === 'call') AutoBotNative.callNumber(ph);
+                else if (a === 'endcall') AutoBotNative.endCall();
+                else if (a === 'wa') AutoBotNative.openWhatsApp(ph);
+                el.disabled = true; el.style.opacity = '0.5';
+              };
+            }
             if (window.AutoBotNative && !window.__abSyncPatched) {
               window.__abSyncPatched = true;
               var origSetItem = localStorage.setItem.bind(localStorage);
@@ -107,6 +138,8 @@ class MainActivity : AppCompatActivity() {
     """
     private val REQ_CALL = 101
     private val REQ_CONTACTS = 102
+    private val REQ_ENDCALL = 103
+    private var pendingBrainSave: Pair<String, String>? = null
 
     private lateinit var webView: WebView
     private lateinit var nativeScreen: View
@@ -401,6 +434,23 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun runCommand(low: String, msg: String): Boolean {
+        // ---------- OFFLINE BRAIN (v2.6): bina API key / bina model ke bhi ye commands chalete hain ----------
+        try {
+            val br = OfflineBrain.parse(this, low, msg)
+            if (br != null) {
+                for (a in br.actions) {
+                    when (a.action) {
+                        "call" -> runOnUiThread { inputPhone.setText(a.arg); autoCall() }
+                        "endcall" -> runOnUiThread { endCallAction(false) }
+                        "lock" -> runOnUiThread { lockPhone(false) }
+                        "openapp" -> runOnUiThread { openAppByName(a.arg) }
+                        "phonebook" -> runOnUiThread { brainSavePhonebook(a.arg, a.arg2) }
+                    }
+                }
+                chatReplyEx(br.text, br.buttonsJson())
+                return true
+            }
+        } catch (e: Exception) { /* brain fail = normal flow */ }
         if (low == "admin" || low == "admin panel") { runOnUiThread { startActivity(Intent(this, AdminPanelActivity::class.java)) }; chatReply("🛡️ Admin Panel khul gaya — API keys, Ollama, models sab wahan."); return true }
         if (low.startsWith("ask ")) {
             val q = msg.substring(4).trim()
@@ -536,6 +586,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         @JavascriptInterface
+        fun endCall() { runOnUiThread { endCallAction(false) } }
+
+        @JavascriptInterface
+        fun lockPhone() { runOnUiThread { lockPhone(false) } }
+
+        @JavascriptInterface
         fun openWhatsApp(phone: String) {
             runOnUiThread {
                 inputPhone.setText(phone)
@@ -636,8 +692,69 @@ class MainActivity : AppCompatActivity() {
         }
         when (requestCode) {
             REQ_CALL -> doCall()
-            REQ_CONTACTS -> saveContact()
+            REQ_CONTACTS -> { pendingBrainSave?.let { doSaveContact(it.first, it.second); pendingBrainSave = null } ?: saveContact() }
+            REQ_ENDCALL -> doEndCall()
         }
+    }
+
+    // ---------- v2.6: END CALL (TelecomManager, Android 9+) ----------
+    private fun endCallAction(fromChat: Boolean) {
+        if (android.os.Build.VERSION.SDK_INT < 28) {
+            if (fromChat) chatReply("❌ Android 9 se purane phone pe programmatically call end nahi hoti — screen se kat kar do.")
+            else Toast.makeText(this, "Android 9+ chahiye call end ke liye", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (ContextCompat.checkSelfPermission(this, "android.permission.ANSWER_PHONE_CALLS") == PackageManager.PERMISSION_GRANTED) doEndCall()
+        else ActivityCompat.requestPermissions(this, arrayOf("android.permission.ANSWER_PHONE_CALLS"), REQ_ENDCALL)
+    }
+
+    private fun doEndCall() {
+        var ok = false
+        try {
+            val tm = getSystemService(TELECOM_SERVICE) as TelecomManager
+            ok = tm.endCall()
+        } catch (e: Exception) { ok = false }
+        status(if (ok) "🔴 Call ended" else "Koi active call nahi mili")
+        appendTerm(if (ok) "\n🔴 (call ended by bot)\n" else "\n(call end: koi active call nahi mili)\n")
+    }
+
+    // ---------- v2.6: LOCK PHONE (device admin, ek baar activate) ----------
+    private fun lockPhone(fromChat: Boolean) {
+        val dpm = getSystemService(DEVICE_POLICY_SERVICE) as DevicePolicyManager
+        val comp = ComponentName(this, AdminReceiver::class.java)
+        if (dpm.isAdminActive(comp)) {
+            dpm.lockNow()
+            if (fromChat) chatReply("🔒 Phone lock ho gaya.")
+            else status("🔒 Phone locked")
+        } else {
+            runOnUiThread {
+                try {
+                    val i = Intent(android.app.admin.DeviceAdminReceiver.ACTION_ADD_DEVICE_ADMIN).apply {
+                        putExtra(android.app.admin.DeviceAdminReceiver.EXTRA_DEVICE_ADMIN, comp)
+                        putExtra(android.app.admin.DeviceAdminReceiver.EXTRA_ADD_EXPLANATION, "Auto Bot ko 'lock my phone' command se phone lock karne ki permission chahiye. Sirf lock — koi aur power nahi.")
+                    }
+                    startActivity(i)
+                } catch (e: Exception) { Toast.makeText(this, "Admin activate fail: " + e.message, Toast.LENGTH_LONG).show() }
+            }
+            if (fromChat) chatReply("🔐 Pehli baar device admin permission chahiye — screen pe 'Activate' dabao (sirf ek baar). Phir dobara 'lock my phone' bolo.")
+        }
+    }
+
+    // ---------- v2.6: brain contact → phone contact book bhi ----------
+    private fun brainSavePhonebook(name: String, phone: String) {
+        if (name.isBlank() || phone.length < 8) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_CONTACTS) == PackageManager.PERMISSION_GRANTED) doSaveContact(name, phone)
+        else { pendingBrainSave = Pair(name, phone); ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.WRITE_CONTACTS), REQ_CONTACTS) }
+    }
+
+    // ---------- v2.6: chat reply with buttons ----------
+    private fun chatReplyEx(text: String, buttonsJson: String) {
+        try {
+            webView.evaluateJavascript(
+                "window.__localBotReplyEx && window.__localBotReplyEx(" + JSONObject.quote(text) + "," + buttonsJson + ")",
+                null
+            )
+        } catch (e: Exception) { chatReply(text) }
     }
 
     private fun status(msg: String) { statusText.text = msg }

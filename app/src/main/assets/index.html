@@ -455,6 +455,30 @@ if (chatHist.length) {
 </script>
 <script>
   window.__localBotReply = function (t) { $('typing') && $('typing').remove(); bubble('bot', t); chatHist.push({ u: window.__lastLocalMsg || '', b: t }); saveChat(); };
+  /* v2.6 offline brain: buttons wala reply (call/end-call/whatsapp buttons chat mein) */
+  window.__localBotReplyEx = function (t, btns) {
+    $('typing') && $('typing').remove();
+    var d = document.createElement('div');
+    d.className = 'msg bot';
+    var html = '<span class="av">' + LOGO_SVG + '</span><div class="bubble">' + esc(t);
+    (btns || []).forEach(function (b) {
+      var col = (b.action === 'endcall') ? '#ef4146' : '#10a37f';
+      html += '<div style="margin-top:8px"><button style="background:' + col + ';color:#fff;border:none;border-radius:20px;padding:9px 18px;font-size:14px;font-weight:600;cursor:pointer" onclick="abBtn(this)" data-action="' + esc(b.action) + '" data-phone="' + esc(b.phone || '') + '">' + esc(b.label) + '</button></div>';
+    });
+    html += '</div>';
+    d.innerHTML = html;
+    $('msgs').appendChild(d);
+    $('view').scrollTop = $('view').scrollHeight;
+    chatHist.push({ u: window.__lastLocalMsg || '', b: t }); saveChat();
+  };
+  window.abBtn = function (el) {
+    if (!window.AutoBotNative) return;
+    var a = el.getAttribute('data-action'), ph = el.getAttribute('data-phone');
+    if (a === 'call') AutoBotNative.callNumber(ph);
+    else if (a === 'endcall') AutoBotNative.endCall();
+    else if (a === 'wa') AutoBotNative.openWhatsApp(ph);
+    el.disabled = true; el.style.opacity = '0.5';
+  };
   if (window.AutoBotNative) {
     // Native mode banner ab hidden (feature phir bhi active hai, sirf visual notice nahi dikhta)
     document.body.insertAdjacentHTML('afterbegin', '<div style="display:none;background:#0ea5b7;color:#04222a;padding:6px 14px;font-size:12px;font-weight:600;text-align:center">📱 Native mode ON — contacts phone mein save honge</div>');
