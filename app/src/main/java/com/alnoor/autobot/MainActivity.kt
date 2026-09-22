@@ -52,11 +52,38 @@ class MainActivity : AppCompatActivity() {
     private val PAGE_FIX_JS = """
         (function(){
           try {
-            document.querySelectorAll('body > div[style*="0ea5b7"]').forEach(function(b){
-              b.style.position='fixed'; b.style.top='0'; b.style.left='0'; b.style.right='0';
-              b.style.width='100%'; b.style.boxSizing='border-box'; b.style.zIndex='9999';
-              document.body.style.paddingTop = b.offsetHeight + 'px';
-            });
+            // "Native mode ON" banner ab bilkul hide — feature (native bridge) bina banner ke bhi chalta hai
+            document.querySelectorAll('body > div[style*="0ea5b7"]').forEach(function(b){ b.style.display='none'; });
+            // Purchase disclaimer bar hide — iske jagah sirf jab purchase-related baat ho tab chat mein reminder
+            var _disc = document.getElementById('disclaimer');
+            if (_disc) _disc.style.display = 'none';
+            if (!window.__abPurchaseWatch) {
+              window.__abPurchaseWatch = true;
+              var _msgs = document.getElementById('msgs');
+              var _lastWarn = 0;
+              var _rx = /\b(buy|purchase|order|kharid|khareed|checkout|payment|pay\s*now)\b/i;
+              function _maybeWarn(text) {
+                if (!text || !_rx.test(text)) return;
+                var now = Date.now();
+                if (now - _lastWarn < 15000) return;
+                _lastWarn = now;
+                if (!_msgs) return;
+                var d = document.createElement('div');
+                d.className = 'msg bot';
+                d.innerHTML = '<div class="bubble" style="color:var(--muted);font-size:13px">⚠️ Purchases hamesha owner approval ke baad hoti hain.</div>';
+                _msgs.appendChild(d);
+                d.scrollIntoView({block:'end'});
+              }
+              if (_msgs) {
+                new MutationObserver(function(muts){
+                  muts.forEach(function(m){
+                    m.addedNodes.forEach(function(n){
+                      if (n.nodeType === 1) _maybeWarn(n.textContent || '');
+                    });
+                  });
+                }).observe(_msgs, { childList: true });
+              }
+            }
             if (window.AutoBotNative && !window.__abSyncPatched) {
               window.__abSyncPatched = true;
               var origSetItem = localStorage.setItem.bind(localStorage);

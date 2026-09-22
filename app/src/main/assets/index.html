@@ -229,7 +229,7 @@
       <button class="ibtn" id="mic" onclick="micToggle()" title="Voice input">🎤</button>
       <button id="send" disabled onclick="send()" title="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
     </div>
-    <div id="disclaimer">Auto Bot mistakes kar sakta hai. Purchases hamesha owner approval ke baad.</div>
+    <div id="disclaimer" style="display:none">Auto Bot mistakes kar sakta hai. Purchases hamesha owner approval ke baad.</div>
   </div>
 </main>
 
@@ -456,12 +456,36 @@ if (chatHist.length) {
 <script>
   window.__localBotReply = function (t) { $('typing') && $('typing').remove(); bubble('bot', t); chatHist.push({ u: window.__lastLocalMsg || '', b: t }); saveChat(); };
   if (window.AutoBotNative) {
-    document.body.insertAdjacentHTML('afterbegin', '<div style="position:fixed;top:0;left:0;right:0;width:100%;box-sizing:border-box;z-index:9999;background:#0ea5b7;color:#04222a;padding:6px 14px;font-size:12px;font-weight:600;text-align:center">📱 Native mode ON — contacts phone mein save honge</div>');
-    var _nb = document.body.firstElementChild;
-    if (_nb) document.body.style.paddingTop = _nb.offsetHeight + 'px';
+    // Native mode banner ab hidden (feature phir bhi active hai, sirf visual notice nahi dikhta)
+    document.body.insertAdjacentHTML('afterbegin', '<div style="display:none;background:#0ea5b7;color:#04222a;padding:6px 14px;font-size:12px;font-weight:600;text-align:center">📱 Native mode ON — contacts phone mein save honge</div>');
     var mo = document.getElementById('sidebar');
     if (mo) mo.insertAdjacentHTML('beforeend', '<button class="nav-item" onclick="AutoBotNative.openTerminal()"><span class="nav-ico">🖥️</span> Terminal</button><button class="nav-item" onclick="AutoBotNative.openNativePanel()"><span class="nav-ico">⚡</span> Native Powers</button>');
   }
+  // Purchase disclaimer ab static bar nahi — sirf jab purchase-related baat chal rahi ho tab chat mein reminder
+  (function () {
+    var _msgs = document.getElementById('msgs');
+    var _lastWarn = 0;
+    var _rx = /\b(buy|purchase|order|kharid|khareed|checkout|payment|pay\s*now)\b/i;
+    function _maybeWarn(text) {
+      if (!text || !_rx.test(text)) return;
+      var now = Date.now();
+      if (now - _lastWarn < 15000) return;
+      _lastWarn = now;
+      if (!_msgs) return;
+      var d = document.createElement('div');
+      d.className = 'msg bot';
+      d.innerHTML = '<div class="bubble" style="color:var(--muted);font-size:13px">⚠️ Purchases hamesha owner approval ke baad hoti hain.</div>';
+      _msgs.appendChild(d);
+      d.scrollIntoView({ block: 'end' });
+    }
+    if (_msgs) {
+      new MutationObserver(function (muts) {
+        muts.forEach(function (m) {
+          m.addedNodes.forEach(function (n) { if (n.nodeType === 1) _maybeWarn(n.textContent || ''); });
+        });
+      }).observe(_msgs, { childList: true });
+    }
+  })();
   // AutoBotNative cross-session history sync (online <-> offline dono ek hi chat history)
   (function () {
     if (!window.AutoBotNative) return;
