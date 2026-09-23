@@ -464,7 +464,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ---------- v3.0: WHATSAPP WEB automation (browser tab mein, QR ek dafa scan) ----------
-    private fun waWebTab(): WebTab? = webTabs.firstOrNull { it.wv.url.contains("web.whatsapp.com") }
+    private fun waWebTab(): WebTab? = webTabs.firstOrNull { it.wv.url?.contains("web.whatsapp.com") == true }
 
     private fun waJs(tab: WebTab, js: String, timeoutMs: Long = 5000): String {
         val latch = java.util.concurrent.CountDownLatch(1)
@@ -838,7 +838,7 @@ class MainActivity : AppCompatActivity() {
                     chatReply(ans)
                     // v3.0 Command Bridge: AI ke jawab mein sh code block ho to terminal pe chala do
                     try {
-                        val blocks = Regex("```(?:sh|bash|shell)?[ \t]*\n([\s\S]*?)```").findAll(ans)
+                        val blocks = Regex("```(?:sh|bash|shell)?[ \\t]*\\n([\\s\\S]*?)```").findAll(ans)
                             .map { it.groupValues[1].trim() }.filter { it.isNotBlank() }.toList()
                         for (b in blocks) {
                             val bad = listOf("rm -rf", "m" + "kfs", "dd if=", "> /system")
@@ -1009,7 +1009,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (low == "tabs" || low == "tab list" || low == "kitni tab") {
             if (webTabs.isEmpty()) { chatReply("🌐 Koi tab nahi khuli. 'browser' likho."); return true }
-            chatReply("🌐 Tabs (${webTabs.size}):\n" + webTabs.mapIndexed { i, t -> "${i + 1}. ${if (t.id == webActiveId) "[active] " else ""}${t.wv.url.take(60)}" }.joinToString("\n") + "\n\n'tab 2' se switch, 'tab band' se active band")
+            chatReply("🌐 Tabs (${webTabs.size}):\n" + webTabs.mapIndexed { i, t -> "${i + 1}. ${if (t.id == webActiveId) "[active] " else ""}${t.wv.url?.take(60) ?: ""}" }.joinToString("\n") + "\n\n'tab 2' se switch, 'tab band' se active band")
             return true
         }
         if (Regex("^tab \\d+$").matches(low)) {
@@ -1250,7 +1250,7 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun downloadVoiceModel(name: String) {
             val m = SpeechEngine.find(name)
-            if (m == null) { runOnUiThread { chatReply("❌ Voice model nahi mila: $name — "voice" likho options ke liye.") }; return }
+            if (m == null) { runOnUiThread { chatReply("❌ Voice model nahi mila: $name — 'voice' likho options ke liye.") }; return }
             chatReply("⬇️ ${m.display} download shuru (${m.size})...")
             Thread {
                 val res = SpeechEngine.download(this@MainActivity, m) { p -> runOnUiThread { status(p) } }
@@ -1406,7 +1406,7 @@ class MainActivity : AppCompatActivity() {
             val am = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
             if (android.os.Build.VERSION.SDK_INT >= 31) {
                 if (on) {
-                    val dev = am.availableCommunicationDevices.firstOrNull { it.type == android.media.AudioDeviceInfo.TYPE_SPEAKER }
+                    val dev = am.availableCommunicationDevices.firstOrNull { it.type == android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
                     if (dev != null) am.setCommunicationDevice(dev) else return "❌ Is phone mein speaker device nahi mila."
                 } else am.clearCommunicationDevice()
             } else {

@@ -64,7 +64,7 @@ object OfflineBrain {
         if (words.isEmpty()) return Lang.EN
         var ru = 0; var en = 0
         for (w in words) {
-            val clean = w.trim(Regex("[^a-z]"))
+            val clean = w.replace(Regex("[^a-z]"), "")
             if (clean in RU_MARKERS) ru++
             else if (clean in EN_MARKERS) en++
         }
@@ -401,15 +401,15 @@ object OfflineBrain {
         return emptyList()
     }
 
-    private fun cleanQuery(q: String): String = q.trim().trim(Regex("[?.!]+")).trim()
+    private fun cleanQuery(q: String): String = q.trim().replace(Regex("[?.!]+"), "").trim()
 
     // ================= SHORT ANSWERS =================
     private fun isYes(low: String): Boolean {
-        val bare = low.trim(Regex("[^\\p{L}\\p{M} ]")).trim()
+        val bare = low.replace(Regex("[^\\p{L}\\p{M} ]"), "").trim().trim()
         return bare in YES_WORDS || (YES_WORDS.any { it.length > 4 && bare == it } )
     }
     private fun isNo(low: String): Boolean {
-        val bare = low.trim(Regex("[^\\p{L}\\p{M} ]")).trim()
+        val bare = low.replace(Regex("[^\\p{L}\\p{M} ]"), "").trim().trim()
         return bare in NO_WORDS || (NO_WORDS.any { it.length > 4 && bare == it })
     }
     private fun pickNumber(low: String, max: Int): Int? {
@@ -424,7 +424,7 @@ object OfflineBrain {
     private fun handlePending(ctx: Context, lang: Lang, low: String, r: BrainReply): Boolean {
         val p = pending ?: return false
         val isYesW = isYes(low); val isNoW = isNo(low); val num = pickNumber(low, p.contacts.size)
-        val bare = low.trim(Regex("[^\\p{L}\\p{M}\\d ]")).trim()
+        val bare = low.replace(Regex("[^\\p{L}\\p{M}\\d ]"), "").trim().trim()
         val looksNewCommand = beforeVerbTarget(low) != null || extractPhone(low) != null
 
         when (p.kind) {
@@ -433,7 +433,7 @@ object OfflineBrain {
                 var pick: BrainContact? = null
                 if (num != null && p.contacts.isNotEmpty()) pick = p.contacts[num - 1]
                 else if (bare.isNotBlank() && p.contacts.isNotEmpty()) {
-                    pick = p.contacts.firstOrNull { it.name.lowercase().contains(bare.lowercase()) }
+                    pick = p.contacts.firstOrNull { c -> c.name.lowercase().contains(bare.lowercase()) }
                         ?: resolve(p.contacts, bare).firstOrNull()
                 }
                 if (pick == null && looksNewCommand) {
@@ -560,7 +560,7 @@ object OfflineBrain {
 
         // ---------- 1) GREETING ----------
         val bare = low.replace(Regex("[^\\p{L}\\p{M} ]"), "").trim()
-        val isGreet = bare in GREET_BARE || words.all { it.trim(Regex("[^\\p{L}\\p{M}]")) in GREET_BARE }
+        val isGreet = bare in GREET_BARE || words.all { it.replace(Regex("[^\\p{L}\\p{M}]"), "") in GREET_BARE }
         val howAreYou = HOW_ARE_YOU.any { bare.contains(it) } && bare.split(Regex("[\\s]+")).size <= 5
         if ((isGreet || howAreYou) && prefs(ctx).getBoolean("brain_greeting", true)) {
             r.text = if (howAreYou) t(lang,
@@ -660,8 +660,7 @@ object OfflineBrain {
             val now = Date()
             val tm = SimpleDateFormat("h:mm a", Locale.getDefault()).format(now)
             val dt = SimpleDateFormat("EEEE, d MMMM", Locale.getDefault()).format(now)
-            r.text = "🕒 Ab waqt: $tm
-📅 $dt"
+            r.text = "🕒 Ab waqt: $tm\n📅 $dt"
             return r
         }
 
@@ -694,15 +693,14 @@ object OfflineBrain {
                 val n = dur.groupValues[1].toInt()
                 val unit = dur.groupValues[2]
                 val secs = when {
-                    unit.startsWith("sec") -> n
+                    unit.startsWith("sec") -> n.toLong()
                     unit.startsWith("ghant") || unit.startsWith("hr") || unit.startsWith("hour") -> n * 3600L
                     else -> n * 60L
                 }
                 if (secs in 5..86400) {
                     val a = AlarmEngine.scheduleTimer(ctx, secs, "$n $unit ka timer")
                     val mins = secs / 60
-                    r.text = "⏰ Timer set: $n $unit" + (if (secs >= 60 && secs % 60 == 0L) " ($mins min)" else "") + ".
-Waqt hone par loud alarm bajega — Snooze/Stop ke saath."
+                    r.text = "⏰ Timer set: $n $unit" + (if (secs >= 60 && secs % 60 == 0L) " ($mins min)" else "") + ".\nWaqt hone par loud alarm bajega — Snooze/Stop ke saath."
                     return r
                 }
             }
