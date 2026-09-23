@@ -156,7 +156,7 @@ object SpeechEngine {
      * onPartial: live text (input box mein dikhta hai)
      * onFinal  : poora sentence → chat pipeline ko jata hai
      */
-    fun start(ctx: Context, onPartial: (String) -> Unit, onFinal: (String) -> Unit, onError: (String) -> Unit): String {
+    fun start(ctx: Context, onPartial: (String) -> Unit, onFinal: (String) -> Unit, onFail: (String) -> Unit): String {
         if (isListening) return "🎤 Already sun raha hoon..."
         val m = activeModel(ctx) ?: return "❌ Voice model nahi hai. Chat mein likho: \"voice download urdu-hindi\" (~42MB, ek baar internet chahiye)"
         stop()
@@ -180,7 +180,7 @@ object SpeechEngine {
                 }
                 override fun onError(exception: Exception?) {
                     isListening = false
-                    onError(exception?.message ?: "Mic error")
+                    onFail(exception?.message ?: "Mic error")
                 }
                 override fun onTimeout() {
                     isListening = false
