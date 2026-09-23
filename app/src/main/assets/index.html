@@ -478,6 +478,7 @@ if (chatHist.length) {
     else if (a === 'endcall') AutoBotNative.endCall();
     else if (a === 'wa') AutoBotNative.openWhatsApp(ph);
     else if (a === 'dlmodel' && AutoBotNative.downloadModel) AutoBotNative.downloadModel(ph);
+      else if (a === 'dlvoice' && AutoBotNative.downloadVoiceModel) AutoBotNative.downloadVoiceModel(ph);
     el.disabled = true; el.style.opacity = '0.5';
   };
   if (window.AutoBotNative) {

@@ -16,6 +16,14 @@ import org.json.JSONObject
  */
 object AIBrain {
 
+    // v2.9: multilingual system instruction — sab AI providers ko user ki language mein jawab dena
+    private const val SYSTEM_INSTRUCTION: String =
+        "You are Auto Bot's multilingual assistant. " +
+        "Understand English, Urdu, Roman Urdu, Hindi, Hinglish and mixed-language messages whenever the selected model supports them. " +
+        "Answer in the language/style used by the user. Do not translate unless requested. " +
+        "Do not unnecessarily change names, phone numbers, commands or technical terms. " +
+        "Keep responses natural and relevant to the user's exact question."
+
     private fun http(url: String, method: String, headers: Map<String, String>, body: String?): Pair<Int, String> {
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.requestMethod = method
@@ -111,7 +119,9 @@ object AIBrain {
         val partsArr = org.json.JSONArray().put(msgPart)
         val contentsItem = org.json.JSONObject().put("parts", partsArr)
         val contentsArr = org.json.JSONArray().put(contentsItem)
+        val sysPart = org.json.JSONObject().put("text", SYSTEM_INSTRUCTION)
         val body = org.json.JSONObject().put("contents", contentsArr)
+            .put("system_instruction", org.json.JSONObject().put("parts", org.json.JSONArray().put(sysPart)))
         val (code, text) = http(url, "POST", emptyMap(), body.toString())
         if (code !in 200..299) return "❌ Gemini error (HTTP $code): ${text.take(200)}"
         val candidates = JSONObject(text).optJSONArray("candidates")
@@ -129,6 +139,7 @@ object AIBrain {
             .put("model", model)
             .put("stream", false)
             .put("messages", org.json.JSONArray()
+                .put(JSONObject().put("role", "system").put("content", SYSTEM_INSTRUCTION))
                 .put(JSONObject().put("role", "user").put("content", q)))
         val (code, text) = http(k.base.trimEnd('/') + "/api/chat", "POST", headers, body.toString())
         if (code !in 200..299) return "❌ Ollama error (HTTP $code): ${text.take(200)}"
@@ -140,6 +151,7 @@ object AIBrain {
         val body = JSONObject()
             .put("model", model)
             .put("messages", org.json.JSONArray()
+                .put(JSONObject().put("role", "system").put("content", SYSTEM_INSTRUCTION))
                 .put(JSONObject().put("role", "user").put("content", q)))
         val (code, text) = http(k.base.trimEnd('/') + "/chat/completions", "POST",
             mapOf("Authorization" to "Bearer ${k.key}"), body.toString())

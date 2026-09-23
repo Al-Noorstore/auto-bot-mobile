@@ -1,6 +1,7 @@
 package com.alnoor.autobot
 
 import android.Manifest
+import com.topjohnwu.superuser.Shell
 import android.content.ContentProviderOperation
 import android.content.Context
 import android.content.Intent
@@ -147,6 +148,7 @@ class MainActivity : AppCompatActivity() {
                 else if (a === 'endcall') AutoBotNative.endCall();
                 else if (a === 'wa') AutoBotNative.openWhatsApp(ph);
                 else if (a === 'dlmodel' && AutoBotNative.downloadModel) AutoBotNative.downloadModel(ph);
+                else if (a === 'dlvoice' && AutoBotNative.downloadVoiceModel) AutoBotNative.downloadVoiceModel(ph);
                 el.disabled = true; el.style.opacity = '0.5';
               };
             }
@@ -168,12 +170,32 @@ class MainActivity : AppCompatActivity() {
                 }
               }
             }
+            // v3.0: OFFLINE VOICE (Vosk) — mic button native engine se (model ready ho to)
+            try {
+              var _mc = document.getElementById('mic');
+              if (_mc && window.AutoBotNative) {
+                _mc.title = 'Voice input (offline engine)';
+                if (!_mc.__abVoicePatched) {
+                  _mc.__abVoicePatched = true;
+                  _mc.addEventListener('click', function (ev) {
+                    try {
+                      if (AutoBotNative.voiceReady && AutoBotNative.voiceReady()) {
+                        ev.stopImmediatePropagation(); ev.preventDefault();
+                        if (window.__abVoiceOn) { AutoBotNative.stopVoice(); }
+                        else { AutoBotNative.startVoice(); }
+                      }
+                    } catch (e) {}
+                  }, true);
+                }
+              }
+            } catch (e) {}
           } catch (e) {}
         })();
     """
     private val REQ_CALL = 101
     private val REQ_CONTACTS = 102
     private val REQ_ENDCALL = 103
+    private val REQ_MIC = 104
     private var pendingBrainSave: Pair<String, String>? = null
 
     private lateinit var webView: WebView
@@ -183,10 +205,76 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusText: TextView
     private var pendingCall = false
     private lateinit var terminalScreen: View
+    // v3.0: BROWSER — multi-tab in-app WebView
+    private lateinit var browserScreen: View
+    private lateinit var webHost: android.widget.FrameLayout
+    private lateinit var webTabsBar: LinearLayout
+    private class WebTab(val id: Int, val wv: WebView)
+    private val webTabs = ArrayList<WebTab>()
+    private var webSeq = 0
+    private var webActiveId = -1
     private lateinit var termOut: TextView
     private lateinit var termScroll: ScrollView
     private lateinit var termIn: EditText
-    private val termBuf = StringBuilder()
+    // v3.0: terminal TABS — har tab apna session (Termux style)
+    private class TermSession(val id: Int) { val buf = StringBuilder(); var shell: com.topjohnwu.superuser.Shell? = null }
+    private val termSessions = ArrayList<TermSession>()
+    private var termSeq = 0
+    private var termActiveId = -1
+    private lateinit var termTabs: LinearLayout
+
+    private fun termActive(): TermSession =
+        termSessions.firstOrNull { it.id == termActiveId } ?: termSessions.firstOrNull() ?: termNewSession()
+
+    private fun termNewSession(): TermSession {
+        val sess = TermSession(++termSeq)
+        sess.buf.append("Auto Bot Terminal v3.0 — sh (tab $termSeq)\n$ ")
+        termSessions.add(sess)
+        termActiveId = sess.id
+        renderTabs()
+        renderTerm()
+        return sess
+    }
+
+    private fun termCloseSession(id: Int) {
+        val idx = termSessions.indexOfFirst { it.id == id }
+        if (idx < 0) return
+        try { termSessions[idx].shell?.close() } catch (_: Exception) {}
+        termSessions.removeAt(idx)
+        if (termSessions.isEmpty()) { termNewSession(); return }
+        if (termActiveId == id) termActiveId = termSessions[maxOf(0, idx - 1)].id
+        renderTabs()
+        renderTerm()
+    }
+
+    private fun renderTerm() {
+        val sess = termSessions.firstOrNull { it.id == termActiveId } ?: return
+        termOut.text = sess.buf.toString()
+        termScroll.post { termScroll.fullScroll(ScrollView.FOCUS_DOWN) }
+    }
+
+    private fun renderTabs() {
+        termTabs.removeAllViews()
+        for (sess in termSessions) {
+            val chip = LinearLayout(this)
+            chip.orientation = LinearLayout.HORIZONTAL
+            chip.setPadding(14, 6, 8, 6)
+            val name = TextView(this)
+            name.text = "sh ${termSessions.indexOf(sess) + 1}"
+            name.textSize = 13f
+            name.typeface = android.graphics.Typeface.MONOSPACE
+            name.setTextColor(if (sess.id == termActiveId) -0x1 else -0x555556)
+            name.setOnClickListener { termActiveId = sess.id; renderTabs(); renderTerm() }
+            val x = TextView(this)
+            x.text = "  ✕"
+            x.textSize = 13f
+            x.setTextColor(-0x1c9fd0)
+            x.setOnClickListener { termCloseSession(sess.id) }
+            chip.addView(name)
+            chip.addView(x)
+            termTabs.addView(chip)
+        }
+    }
 
     // ---------- Python 3.11 engine (APK ke andar bundled) ----------
     private var pipDir: String = ""
@@ -226,15 +314,47 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
+    // v3.0: har tab ka APNA persistent shell — cd/variables tab ke andar yaad rehte hain (Termux style)
+    private fun sessionShell(sess: TermSession): com.topjohnwu.superuser.Shell? {
+        if (sess.shell != null) return sess.shell
+        return try {
+            val b = com.topjohnwu.superuser.Shell.Builder.create()
+            if (rootAvailable()) b.setFlags(com.topjohnwu.superuser.Shell.FLAG_REDIRECT_STDERR).setTimeout(15)
+            else b.setFlags(com.topjohnwu.superuser.Shell.FLAG_REDIRECT_STDERR or com.topjohnwu.superuser.Shell.FLAG_NON_ROOT_SHELL).setTimeout(15)
+            val sh = b.build()
+            sess.shell = sh
+            sh
+        } catch (e: Exception) { null }
+    }
+
+    // v3.0: libsu shell engine — root (su) mile to root shell, warna normal sh fallback
+    private fun shellInit() {
+        try { Shell.setDefaultBuilder(Shell.Builder.create().setFlags(Shell.FLAG_REDIRECT_STDERR).setTimeout(15)) } catch (_: Exception) {}
+    }
+    private fun rootAvailable(): Boolean = try { Shell.isAppGrantedRoot() == true } catch (e: Exception) { false }
+
     // shell engine: real Android sh, background mein bot bhi use karta hai
     private fun runShell(cmd: String, fromChat: Boolean = false, label: String = "$") {
-        appendTerm("\n$ $cmd\n")
+        val sess = termActive()
+        appendTermTo(sess, "\n$ $cmd\n")
         Thread {
             var out = ""
             try {
                 val cwd = File(getExternalFilesDir(null), "work").apply { mkdirs() }
-                if (cmd.trim().startsWith("py ")) { runPython(cmd.trim().substring(3).removeSurrounding("\""), fromChat); return@Thread }
-                if (cmd.trim().startsWith("pip install ")) { pipInstall(cmd.trim().substring(12), fromChat); return@Thread }
+                if (cmd.trim().startsWith("py ")) { runPython(cmd.trim().substring(3).removeSurrounding("\""), fromChat); appendTermTo(sess, "$ "); return@Thread }
+                if (cmd.trim().startsWith("pip install ")) { pipInstall(cmd.trim().substring(12), fromChat); appendTermTo(sess, "$ "); return@Thread }
+                if (cmd.trim() == "root" || cmd.trim() == "su" || cmd.trim() == "whoami") {
+                    val granted = rootAvailable()
+                    appendTerm(if (granted) "[ROOT] \u2705 Root MILA \u2014 ab commands root (su) shell se chalenge. Full access!" else "[ROOT] \u274C Root nahi \u2014 normal sh shell (app sandbox). Root commands nahi chalenge.")
+                    return@Thread
+                }
+                val sh = sessionShell(sess)
+                if (sh != null) {
+                    try {
+                        val r = sh.newJob().add(cmd).exec()
+                        out = r.out.joinToString("\n").ifBlank { if (r.isSuccess) "(no output, exit ok)" else "(exit ${r.code})" }
+                    } catch (e: Exception) { out = "Error: " + e.message }
+                } else {
                 val p = ProcessBuilder("sh", "-c", cmd)
                     .directory(cwd)
                     .redirectErrorStream(true)
@@ -247,21 +367,28 @@ class MainActivity : AppCompatActivity() {
                 val done = try { p.waitFor() == 0 } catch (e: Exception) { false }
                 out = sb.toString().ifBlank { "(no output, exit ok)" }
                 reader.close(); p.destroy()
+                }
             } catch (e: Exception) { out = "Error: " + e.message }
             val res = out.trim().take(3000)
             runOnUiThread {
-                appendTerm(res + "\n")
+                appendTermTo(sess, res + "\n$ ")
                 if (fromChat) chatReply(if (res.isEmpty() || res == "(no output, exit ok)") "✅ Command chal gaya: $cmd" else "\n$res")
             }
         }.start()
     }
 
-    private fun appendTerm(text: String) {
-        termBuf.append(text)
-        runOnUiThread {
-            termOut.text = termBuf.toString()
-            termScroll.post { termScroll.fullScroll(ScrollView.FOCUS_DOWN) }
+    private fun appendTermTo(sess: TermSession, text: String) {
+        sess.buf.append(text)
+        if (sess.id == termActiveId) {
+            runOnUiThread {
+                termOut.text = sess.buf.toString()
+                termScroll.post { termScroll.fullScroll(ScrollView.FOCUS_DOWN) }
+            }
         }
+    }
+
+    private fun appendTerm(text: String) {
+        appendTermTo(termActive(), text)
     }
 
     private fun chatReply(text: String) {
@@ -272,8 +399,126 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ---------- v3.0: BROWSER (multi-tab) ----------
+    private fun webActive(): WebTab? = webTabs.firstOrNull { it.id == webActiveId }
+
+    private fun showBrowser(show: Boolean) {
+        browserScreen.visibility = if (show) View.VISIBLE else View.GONE
+        if (show && webTabs.isEmpty()) webNewTab("https://www.google.com")
+    }
+
+    private fun webNewTab(url: String): WebTab {
+        val id = ++webSeq
+        val wv = WebView(this)
+        wv.settings.javaScriptEnabled = true
+        wv.settings.domStorageEnabled = true
+        wv.webViewClient = WebViewClient()
+        wv.loadUrl(if (url.startsWith("http")) url else "https://$url")
+        val tab = WebTab(id, wv)
+        webTabs.add(tab)
+        webActiveId = id
+        webHost.removeAllViews()
+        webHost.addView(wv, android.widget.FrameLayout.LayoutParams(-1, -1))
+        webRenderTabs()
+        return tab
+    }
+
+    private fun webSwitch(id: Int) {
+        webActiveId = id
+        webHost.removeAllViews()
+        webActive()?.let { webHost.addView(it.wv, android.widget.FrameLayout.LayoutParams(-1, -1)) }
+        webRenderTabs()
+    }
+
+    private fun webCloseActive() {
+        val idx = webTabs.indexOfFirst { it.id == webActiveId }
+        if (idx < 0) return
+        try { webTabs[idx].wv.destroy() } catch (_: Exception) {}
+        webTabs.removeAt(idx)
+        webHost.removeAllViews()
+        if (webTabs.isEmpty()) { showBrowser(false); return }
+        webSwitch(webTabs[maxOf(0, idx - 1)].id)
+    }
+
+    private fun webRenderTabs() {
+        webTabsBar.removeAllViews()
+        for (tab in webTabs) {
+            val chip = LinearLayout(this)
+            chip.orientation = LinearLayout.HORIZONTAL
+            chip.setPadding(14, 6, 8, 6)
+            val name = TextView(this)
+            name.text = "🌐 ${webTabs.indexOf(tab) + 1}"
+            name.textSize = 13f
+            name.setTextColor(if (tab.id == webActiveId) -0x1 else -0x555556)
+            name.setOnClickListener { webSwitch(tab.id) }
+            val x = TextView(this)
+            x.text = "  ✕"
+            x.textSize = 13f
+            x.setTextColor(-0x1c9fd0)
+            x.setOnClickListener { webActiveId = tab.id; webCloseActive() }
+            chip.addView(name)
+            chip.addView(x)
+            webTabsBar.addView(chip)
+        }
+    }
+
+    // ---------- v3.0: WHATSAPP WEB automation (browser tab mein, QR ek dafa scan) ----------
+    private fun waWebTab(): WebTab? = webTabs.firstOrNull { it.wv.url.contains("web.whatsapp.com") }
+
+    private fun waJs(tab: WebTab, js: String, timeoutMs: Long = 5000): String {
+        val latch = java.util.concurrent.CountDownLatch(1)
+        var res = ""
+        runOnUiThread { tab.wv.evaluateJavascript(js) { r -> res = r ?: ""; latch.countDown() } }
+        latch.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+        return res
+    }
+
+    private fun waReadChats(): String {
+        val t = waWebTab() ?: return "❌ WhatsApp Web tab nahi khuli. Pehle 'whatsapp web' likho aur QR scan karo."
+        return try {
+            val js = """(function(){var items=document.querySelectorAll('#side div[role=listitem]');var out=[];for(var i=0;i<Math.min(items.length,8);i++){var t=items[i].innerText.split(String.fromCharCode(10)).slice(0,2).join(' — ');out.push((i+1)+'. '+t)}return out.join(String.fromCharCode(10))||'Chats load nahi hue — QR scan karke thora wait karo, phir dobara "wa padho" bolo'})()"""
+            val raw = waJs(t, js)
+            (if (raw.length >= 2) raw.substring(1, raw.length - 1) else raw)
+                .replace("\\n", "\n")
+        } catch (e: Exception) { "❌ Padhne mein masla: " + e.message }
+    }
+
+    private fun waSend(contact: String, message: String): String {
+        val t = waWebTab() ?: return "❌ WhatsApp Web tab nahi khuli. Pehle 'whatsapp web' likho aur QR scan karo."
+        return try {
+            // step 1: search box khol kar naam likho
+            waJs(t, """(function(){var b=document.querySelector('#side button[aria-label], #side span[data-icon=search]');if(!b)return 'nosearch';(b.closest('button')||b).click();return 'ok'})()""")
+            Thread.sleep(700)
+            val s1 = waJs(t, """(function(){var e=document.querySelector('#side div[contenteditable=true]');if(!e)return 'nobox';e.focus();e.textContent='""" + contact.replace("'", "") + """';e.dispatchEvent(new InputEvent('input',{bubbles:true}));return 'ok'})()""")
+            if (!s1.contains("ok")) return "❌ Search box nahi mila ($s1)."
+            Thread.sleep(1200)
+            // step 2: pehla result kholo
+            val s2 = waJs(t, """(function(){var items=document.querySelectorAll('#side div[role=listitem]');if(items.length==0)return 'noresult';items[0].click();return 'ok'})()""")
+            if (!s2.contains("ok")) return "❌ Chat nahi mili: '$contact' ($s2). Naam spelling check karo."
+            Thread.sleep(1200)
+            // step 3: message likh kar send
+            val s3 = waJs(t, """(function(){var e=document.querySelector('footer div[contenteditable=true]');if(!e)return 'nobox';e.focus();e.textContent='""" + message.replace("'", "") + """';e.dispatchEvent(new InputEvent('input',{bubbles:true}));var b=document.querySelector('footer button[aria-label*=end], span[data-icon=send]');if(!b)return 'nosend';(b.closest('button')||b).click();return 'sent'})()""")
+            when {
+                s3.contains("sent") -> "✅ '$contact' ko message bhej diya: $message"
+                s3.contains("nobox") -> "❌ Message box nahi mila — chat khuli lagti nahi, dobara try karo."
+                else -> "⚠️ Message likha tha lekin send button nahi mila ($s3) — khud Send dabao."
+            }
+        } catch (e: Exception) { "❌ Bhejne mein masla: " + e.message }
+    }
+
+    // ---------- v3.0: NOTIFY numbers (WhatsApp pe notification) ----------
+    private fun notifyList(): ArrayList<String> {
+        val out = ArrayList<String>()
+        try { val a = org.json.JSONArray(getSharedPreferences("autobot", Context.MODE_PRIVATE).getString("bot_notify_numbers", "[]")); for (i in 0 until a.length()) out.add(a.getString(i)) } catch (_: Exception) {}
+        return out
+    }
+    private fun notifySave(list: ArrayList<String>) {
+        getSharedPreferences("autobot", Context.MODE_PRIVATE).edit().putString("bot_notify_numbers", org.json.JSONArray(list).toString()).apply()
+    }
+
     private fun showTerminal(show: Boolean) {
         terminalScreen.visibility = if (show) View.VISIBLE else View.GONE
+        if (show && termSessions.isEmpty()) termNewSession()
     }
 
     private fun openAppByName(name: String): String {
@@ -306,8 +551,36 @@ class MainActivity : AppCompatActivity() {
 
     private fun openUrl(url: String) { try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse(url))); } catch (e: Exception) {} }
 
+    // ---------- v2.9: app band karna (background process + home) ----------
+    private fun closeAppByName(name: String): String {
+        val n = name.trim().lowercase()
+        val pkgMap = mapOf(
+            "whatsapp" to "com.whatsapp", "youtube" to "com.google.android.youtube",
+            "chrome" to "com.android.chrome", "browser" to "com.android.chrome",
+            "gmail" to "com.google.android.gm", "maps" to "com.google.android.apps.maps",
+            "facebook" to "com.facebook.katana", "instagram" to "com.instagram.android",
+            "tiktok" to "com.zhiliaoapp.musically", "spotify" to "com.spotify.music",
+            "telegram" to "org.telegram.messenger"
+        )
+        var pkg = pkgMap[n] ?: if (n.contains(".")) n else null
+        if (pkg == null) {
+            for (pi in packageManager.getInstalledPackages(0)) {
+                val lbl = pi.applicationInfo.loadLabel(packageManager).toString().lowercase()
+                if (lbl.contains(n)) { pkg = pi.packageName; break }
+            }
+        }
+        if (pkg == null) return "App nahi mili: $name"
+        return try {
+            (getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager).killBackgroundProcesses(pkg)
+            // user ko home screen par bhejo
+            startActivity(android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME).setFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            "✅ $name band ho gaya (background se band kiya — Android kisi app ko force nahi rok sakta jab wo foreground mein ho)."
+        } catch (e: Exception) { "App close fail: " + e.message }
+    }
+
     // ---------- lifecycle ----------
     override fun onCreate(savedInstanceState: Bundle?) {
+        shellInit()
         super.onCreate(savedInstanceState)
         Thread.setDefaultUncaughtExceptionHandler(CrashLogger(this))
         // SAB SE PEHLE: pichle crash ka log dikha do (app crash ho to bhi next launch pe yahan aayenge)
@@ -356,11 +629,35 @@ class MainActivity : AppCompatActivity() {
         inputPhone = findViewById(R.id.inputPhone)
         statusText = findViewById(R.id.statusText)
         terminalScreen = findViewById(R.id.terminalScreen)
+        browserScreen = findViewById(R.id.browserScreen)
+        webHost = findViewById(R.id.webHost)
+        webTabsBar = findViewById(R.id.webTabs)
+        findViewById<Button>(R.id.btnWebAdd).setOnClickListener { webNewTab("https://www.google.com") }
+        findViewById<Button>(R.id.btnWebClose).setOnClickListener { showBrowser(false) }
+        findViewById<Button>(R.id.btnWebGo).setOnClickListener {
+            val q = findViewById<EditText>(R.id.webIn).text.toString().trim()
+            if (q.isBlank()) return@setOnClickListener
+            val t = webActive()
+            if (t == null) webNewTab(q) else t.wv.loadUrl(if (q.startsWith("http")) q else "https://www.google.com/search?q=" + java.net.URLEncoder.encode(q, "UTF-8"))
+        }
         termOut = findViewById(R.id.termOut)
         termScroll = findViewById(R.id.termScroll)
         termIn = findViewById(R.id.termIn)
         findViewById<Button>(R.id.btnTermRun).setOnClickListener { runShell(termIn.text.toString().trim()); termIn.setText("") }
-        findViewById<Button>(R.id.btnTermClear).setOnClickListener { termBuf.setLength(0); termOut.text = "" }
+        termTabs = findViewById(R.id.termTabs)
+        findViewById<Button>(R.id.btnTermAdd).setOnClickListener { termNewSession() }
+        findViewById<Button>(R.id.btnTermCopy).setOnClickListener {
+            val txt = termActive().buf.toString()
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("terminal", txt))
+            Toast.makeText(this, "⧉ Terminal ka pura text copy ho gaya", Toast.LENGTH_SHORT).show()
+        }
+        findViewById<Button>(R.id.btnTermClear).setOnClickListener {
+            val sess = termActive()
+            sess.buf.setLength(0)
+            sess.buf.append("$ ")
+            renderTerm()
+        }
         findViewById<Button>(R.id.btnTermClose).setOnClickListener { showTerminal(false) }
         appendTerm("Auto Bot Terminal v2.1 (" + PyEngine.brand + ") — real Android shell (sh)\nWorking dir: " + File(getExternalFilesDir(null), "work").absolutePath + "\nShell: ls, mkdir, echo, cat, rm, cp, mv, ps, df...\n" + PyEngine.pyHint + "\nChalo koi bhi command do!\n")
 
@@ -482,6 +779,18 @@ class MainActivity : AppCompatActivity() {
                         "lock" -> runOnUiThread { lockPhone(false) }
                         "openapp" -> runOnUiThread { openAppByName(a.arg) }
                         "phonebook" -> runOnUiThread { brainSavePhonebook(a.arg, a.arg2) }
+                        "closeapp" -> runOnUiThread { chatReply(closeAppByName(a.arg)) }
+                        "youtubesearch" -> runOnUiThread { openUrl("https://www.youtube.com/results?search_query=" + java.net.URLEncoder.encode(a.arg, "UTF-8")) }
+                        "browsersearch" -> runOnUiThread { openUrl("https://www.google.com/search?q=" + java.net.URLEncoder.encode(a.arg, "UTF-8")) }
+                        "openurl" -> runOnUiThread { openUrl(a.arg) }
+                        "torch" -> runOnUiThread { torchSet(true) }
+                        "torchoff" -> runOnUiThread { torchSet(false) }
+                        "volup" -> runOnUiThread { volumeAdj(android.media.AudioManager.ADJUST_RAISE) }
+                        "voldown" -> runOnUiThread { volumeAdj(android.media.AudioManager.ADJUST_LOWER) }
+                        "volmax" -> runOnUiThread { volumeMax() }
+                        "volmute" -> runOnUiThread { volumeAdj(android.media.AudioManager.ADJUST_MUTE) }
+                        "speaker" -> runOnUiThread { chatReply(speakerSet(true)) }
+                        "speakeroff" -> runOnUiThread { chatReply(speakerSet(false)) }
                         "dlmodel" -> {
                             val m = ModelStore.find(a.arg)
                             if (m == null) chatReply("❌ Model samajh nahi aaya: ${a.arg}")
@@ -495,11 +804,50 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) { /* brain fail = normal flow */ }
         if (low == "admin" || low == "admin panel") { runOnUiThread { startActivity(Intent(this, AdminPanelActivity::class.java)) }; chatReply("🛡️ Admin Panel khul gaya — API keys, Ollama, models sab wahan."); return true }
         if (low == "settings" || low == "setting" || low == "⚙️" || low.contains("setting khol") || low.contains("settings khol")) { runOnUiThread { startActivity(Intent(this, SettingsActivity::class.java)) }; chatReply("⚙️ Settings khul gaya — Offline Brain, API Keys, Ollama, Transformers tabs wahan hain."); return true }
+        // ---------- v3.0: OFFLINE VOICE commands ----------
+        if (low == "voice" || low == "mic" || low == "awaz" || low == "voice status" || low == "mic status" || low.contains("voice setup")) { chatReply(SpeechEngine.status(this)); return true }
+        if (low.startsWith("voice download") || low.startsWith("mic download")) {
+            val name = msg.substring(msg.indexOf("download") + 8).trim()
+            val m = SpeechEngine.find(name)
+            if (m == null) { chatReply("❌ Voice model nahi mila: "$name". Options: ${SpeechEngine.MODELS.joinToString { it.name }}"); return true }
+            chatReply("⬇️ ${m.display} download shuru (${m.size})...")
+            Thread { val res = SpeechEngine.download(this, m) { p -> runOnUiThread { status(p) } }; runOnUiThread { chatReply(res) } }.start()
+            return true
+        }
+        if (low.startsWith("voice use") || low.startsWith("mic use") || low.startsWith("voice select")) {
+            val name = when {
+                low.startsWith("voice select") -> low.substringAfter("select ").trim()
+                else -> low.substringAfter("use ").trim()
+            }
+            chatReply(SpeechEngine.setActive(this, name)); return true
+        }
+        if (low == "voice delete" || low.startsWith("voice delete ") || low.startsWith("mic delete")) {
+            val name = msg.substring(msg.indexOf("delete") + 6).trim()
+            chatReply(if (name.isBlank()) "❌ Model naam bolo: "voice delete english" ya "voice delete urdu-hindi"" else SpeechEngine.delete(this, name)); return true
+        }
+        if (low == "mic on" || low == "voice on" || low == "suno" || low == "sunno" || low == "sun" || low == "mic start" || low == "voice start") { runOnUiThread { startVoiceCommand() }; return true }
+        if (low == "mic off" || low == "voice off" || low == "mic stop" || low == "voice stop" || low == "bas" || low == "chup") { runOnUiThread { SpeechEngine.stop(); voiceMicOff() }; chatReply("🎤 Voice band."); return true }
         if (low.startsWith("ask ")) {
             val q = msg.substring(4).trim()
             if (q.isBlank()) { chatReply("Sawal likho: ask <sawal>"); return true }
             chatReply("🤖 Soch raha hoon...")
-            Thread { val ans = AIBrain.ask(this, q); appendTerm(ans) }.start()
+            Thread {
+                val ans = AIBrain.ask(this, q)
+                runOnUiThread {
+                    chatReply(ans)
+                    // v3.0 Command Bridge: AI ke jawab mein sh code block ho to terminal pe chala do
+                    try {
+                        val blocks = Regex("```(?:sh|bash|shell)?[ \t]*\n([\s\S]*?)```").findAll(ans)
+                            .map { it.groupValues[1].trim() }.filter { it.isNotBlank() }.toList()
+                        for (b in blocks) {
+                            val bad = listOf("rm -rf", "m" + "kfs", "dd if=", "> /system")
+                            val danger = bad.any { b.contains(it) }
+                            if (danger) chatReply("⚠️ AI ne ye command di lekin W9 ne nahi chalaya (khatarnak laga):\n$b")
+                            else runShell(b, fromChat = true)
+                        }
+                    } catch (_: Exception) {}
+                }
+            }.start()
             return true
         }
         if (low.startsWith("transformer")) {
@@ -523,6 +871,232 @@ class MainActivity : AppCompatActivity() {
         }
         if (low == "keys" || low == "key list") { appendTerm(KeyStore.load(this).joinToString("\n") { (if (it.active) "🟢 " else "⚪ ") + it.label + " [" + it.provider + "]" }.ifBlank { "❌ Koi key nahi — 'admin' likho aur key add karo." }); return true }
         if (low == "terminal" || low == "open terminal") { runOnUiThread { showTerminal(true) }; chatReply("🖥 Terminal khul gaya — screen pe command likho."); return true }
+        if (low.contains("full storage") || low.contains("storage full") || low.contains("sab files") || low.contains("all files")) {
+            runOnUiThread {
+                try {
+                    if (android.os.Build.VERSION.SDK_INT >= 30) {
+                        val i = Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                            Uri.parse("package:" + this.getPackageName()))
+                        startActivity(i)
+                        chatReply("📁 All-files access ki screen khul gayi — W9 ko ON karo. Phir /sdcard ke sab files (terminal se) mil jayenge.")
+                    } else chatReply("📁 Android 11 se neeche ye permission ki zaroorat nahi — /sdcard already accessible hai.")
+                } catch (e: Exception) { chatReply("❌ Settings screen nahi khuli: " + e.message) }
+            }
+            return true
+        }
+        // ---------- v3.0: TOKEN VAULT (kisi bhi platform ka access token) ----------
+        if (low.startsWith("token save") || low.startsWith("token add")) {
+            val parts = msg.trim().split(" ", limit = 4)
+            if (parts.size < 4) { chatReply("🔧 Format: token save <platform> <token>\nMisal: token save github ghp_xxx123"); return true }
+            val name = parts[2]
+            val value = parts.subList(3, parts.size).joinToString(" ")
+            TokenVault.save(this, name, value)
+            chatReply("🔑 Token save ho gaya: $name → " + TokenVault.masked(value))
+            return true
+        }
+        if (low == "token list" || low == "tokens") {
+            val m = TokenVault.list(this)
+            if (m.isEmpty()) { chatReply("🔑 Koi token save nahi.\nFormat: token save <platform> <token>\nGitHub, Vercel, YouTube... jo bhi platform token deta hai."); return true }
+            chatReply("🔑 Saved tokens:\n" + m.keys.sorted().joinToString("\n") { "• $it → " + TokenVault.masked(m[it] ?: "") })
+            return true
+        }
+        if (low.startsWith("token delete") || low.startsWith("token hatao")) {
+            val name = msg.trim().split(" ").lastOrNull() ?: ""
+            chatReply(if (TokenVault.delete(this, name)) "🗑️ Token delete: $name" else "❌ Token nahi mila: $name")
+            return true
+        }
+
+        // ---------- v3.0: GITHUB (token se) ----------
+        if (low == "github" || low.startsWith("github ")) {
+            val token = TokenVault.get(this, "github")
+            if (token == null) { chatReply("🔑 GitHub token nahi hai. Pehle:\ntoken save github <aap-ka-personal-access-token>\n(token GitHub → Settings → Developer settings → Personal access tokens se milta hai)"); return true }
+            chatReply("🐙 GitHub se baat kar raha hoon...")
+            Thread {
+                val hdr = mapOf("Authorization" to "Bearer $token", "Accept" to "application/vnd.github+json")
+                val rest = low.removePrefix("github").trim()
+                val reply = when {
+                    rest.isEmpty() || rest == "status" || rest == "who" -> {
+                        val (c, t) = TokenVault.http("GET", "https://api.github.com/user", hdr, null)
+                        if (c in 200..299) {
+                            val o = JSONObject(t)
+                            "👤 GitHub: ${o.optString("login")} — repos: ${o.optInt("public_repos")}, plan: ${o.optJSONObject("plan")?.optString("name") ?: "-"}\nCommands: github repo banao <naam> • github status"
+                        } else "❌ GitHub error (HTTP $c): ${t.take(200)}"
+                    }
+                    rest.startsWith("repo banao") || rest.startsWith("repo create") || rest.startsWith("repo bana ") -> {
+                        val name = rest.split(" ").lastOrNull { it.isNotBlank() } ?: ""
+                        if (name.isBlank()) "❌ Repo ka naam bolo: github repo banao myproject"
+                        else {
+                            val (c, t) = TokenVault.http("POST", "https://api.github.com/user/repos", hdr, JSONObject().put("name", name).put("private", true).toString())
+                            if (c in 200..299) {
+                                val o = JSONObject(t)
+                                "✅ Repo ban gaya (private): ${o.optString("html_url")}\nClone: git clone ${o.optString("clone_url")}"
+                            } else "❌ GitHub error (HTTP $c): ${t.take(300)}"
+                        }
+                    }
+                    else -> "🐙 GitHub commands:\n• github status — account info\n• github repo banao <naam> — naya private repo"
+                }
+                runOnUiThread { chatReply(reply) }
+            }.start()
+            return true
+        }
+
+        // ---------- v3.0: YOUTUBE search + "play 2nd video" ----------
+        if (low.startsWith("youtube ") || low.startsWith("yt ")) {
+            val rest = msg.trim().substring(low.split(" ")[0].length).trim()
+            if (rest.isBlank()) { chatReply("▶️ Kya search karoon? Misal: youtube lofi beats play 2"); return true }
+            val playN = Regex("play (\\d+)").find(rest)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            val autoPlay = playN == 0 && rest.startsWith("play ")
+            val query = rest.replace(Regex("[ ]*play \\d+"), "").replace(Regex("^play "), "").replace(Regex("^(pe|par|on) "), "").trim()
+            val key = TokenVault.get(this, "youtube")
+            if (key == null) {
+                runOnUiThread {
+                    try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=" + java.net.URLEncoder.encode(query, "UTF-8")))) } catch (_: Exception) {}
+                }
+                chatReply("▶️ YouTube search khul gaya.\n⚠️ Number-wise play ke liye YouTube API key chahiye:\ntoken save youtube <api-key> (console.cloud.google.com se free)")
+                return true
+            }
+            chatReply("⏳ YouTube search kar raha hoon...")
+            Thread {
+                val url = "https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=5&q=" + java.net.URLEncoder.encode(query, "UTF-8") + "&key=" + key
+                val (c, t) = TokenVault.http("GET", url, emptyMap(), null)
+                val reply = if (c in 200..299) {
+                    try {
+                        val items = JSONObject(t).optJSONArray("items") ?: org.json.JSONArray()
+                        val sb = StringBuilder("▶️ \"$query\" — results:\n")
+                        for (i in 0 until items.length()) {
+                            val it = items.getJSONObject(i)
+                            sb.append("${i + 1}. ${it.getJSONObject("snippet").optString("title")}\n")
+                        }
+                        val wantN = if (autoPlay) 1 else playN
+                        if (wantN in 1..items.length()) {
+                            val vid = items.getJSONObject(wantN - 1).optJSONObject("id")?.optString("videoId") ?: ""
+                            if (vid.isNotBlank()) {
+                                runOnUiThread { try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$vid"))) } catch (_: Exception) {} }
+                                sb.append("\n🎬 Video $playN chala raha hoon!")
+                            }
+                        } else sb.append("\nBolo: youtube $query play 2 — doosra video chalega")
+                        sb.toString()
+                    } catch (e: Exception) { "❌ YouTube parse fail: " + e.message }
+                } else "❌ YouTube error (HTTP $c): ${t.take(200)}\nKey sahi hai? token save youtube <key>"
+                runOnUiThread { chatReply(reply) }
+            }.start()
+            return true
+        }
+
+        // ---------- v3.0: WHATSAPP pre-filled message ----------
+        if (low.startsWith("whatsapp ") || low.startsWith("wa ")) {
+            val rest = msg.trim().substring(msg.trim().indexOf(' ') + 1).trim()
+            val num = Regex("(\\+?\\d{8,15})").find(rest)?.groupValues?.get(1) ?: ""
+            val text = rest.removePrefix(num).trim().ifBlank { "Hello!" }
+            if (num.isBlank()) { chatReply("💬 Number chahiye. Misal:\nwhatsapp 923001234567 Assalam o Alaikum, kal milte hain"); return true }
+            runOnUiThread {
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$num?text=" + java.net.URLEncoder.encode(text, "UTF-8"))))
+                    chatReply("💬 WhatsApp chat khul gayi ($num) — message bhar chuka hai, bas Send dabao.")
+                } catch (e: Exception) { chatReply("❌ WhatsApp nahi khula: " + e.message) }
+            }
+            return true
+        }
+
+        // ---------- v3.0: BROWSER commands ----------
+        if (low == "browser" || low == "browser kholo" || low == "open browser") { runOnUiThread { showBrowser(true) }; chatReply("🌐 Browser khul gaya — tabs: '+' se naye, ✕ se band.\nChat se: web <search> • tabs • tab band • page text"); return true }
+        if (low.startsWith("web ")) {
+            val q = msg.trim().substring(4).trim()
+            runOnUiThread { showBrowser(true); webNewTab("https://www.google.com/search?q=" + java.net.URLEncoder.encode(q, "UTF-8")) }
+            chatReply("🌐 Nayi tab khul gayi: $q")
+            return true
+        }
+        if (low == "tabs" || low == "tab list" || low == "kitni tab") {
+            if (webTabs.isEmpty()) { chatReply("🌐 Koi tab nahi khuli. 'browser' likho."); return true }
+            chatReply("🌐 Tabs (${webTabs.size}):\n" + webTabs.mapIndexed { i, t -> "${i + 1}. ${if (t.id == webActiveId) "[active] " else ""}${t.wv.url.take(60)}" }.joinToString("\n") + "\n\n'tab 2' se switch, 'tab band' se active band")
+            return true
+        }
+        if (Regex("^tab \\d+$").matches(low)) {
+            val n = low.split(" ")[1].toInt()
+            val t = webTabs.getOrNull(n - 1)
+            if (t == null) chatReply("❌ Tab $n nahi hai — 'tabs' likho.")
+            else runOnUiThread { webSwitch(t.id) }
+            runOnUiThread { chatReply(if (t != null) "✅ Tab $n active." else "") }
+            return true
+        }
+        if (low.contains("tab band") || low.contains("tab close") || low.contains("close tab")) { runOnUiThread { webCloseActive() }; chatReply("✅ Active tab band."); return true }
+        if (low == "page text" || low.contains("page padho") || low.contains("page ka text")) {
+            val t = webActive()
+            if (t == null) { chatReply("🌐 Browser mein koi tab nahi khuli — pehle 'browser' likho."); return true }
+            runOnUiThread {
+                t.wv.evaluateJavascript("(document.body?document.body.innerText:'').substring(0,2500)") { r ->
+                    chatReply("🌐 Page ka text:\n" + r.removeSurrounding("\""))
+                }
+            }
+            return true
+        }
+
+        // ---------- v3.0: WHATSAPP WEB commands ----------
+        if (low == "whatsapp web" || low == "wa web" || low.contains("whatsapp scan") || low.contains("wa scan")) {
+            runOnUiThread { showBrowser(true); webNewTab("https://web.whatsapp.com") }
+            chatReply("💬 WhatsApp Web khul gayi browser mein.\n1. Phone ke WhatsApp → Linked devices → QR scan karo (sirf pehli dafa)\n2. Session browser mein save rahega, agli baar khud khulega\n3. Phir bolo: wa padho (chats) ya wa bhejo <naam> <message>")
+            return true
+        }
+        if (low == "wa padho" || low == "whatsapp padho" || low.contains("wa messages") || low.contains("wa chats")) {
+            chatReply("⏳ WhatsApp chats padh raha hoon...")
+            Thread { val res = waReadChats(); runOnUiThread { chatReply("💬 WhatsApp chats:\n" + res) } }.start()
+            return true
+        }
+        if (low.startsWith("wa bhejo") || low.startsWith("wa send")) {
+            val rest = msg.trim().removePrefix("wa").trim().removePrefix("send").trim().removePrefix("bhejo").trim()
+            val contact = rest.split(" ").firstOrNull() ?: ""
+            val message = rest.substringAfter(contact, "").trim()
+            if (contact.isBlank() || message.isBlank()) { chatReply("💬 Format: wa bhejo <naam> <message>\nMisal: wa bhejo Wishal yaar kal milte hain"); return true }
+            chatReply("⏳ $contact ko message bhej raha hoon...")
+            Thread { val res = waSend(contact, message); runOnUiThread { chatReply(res) } }.start()
+            return true
+        }
+
+        // ---------- v3.0: NOTIFY (numbers add/change/delete + notification bhejo) ----------
+        if (low.startsWith("notify add") || low.startsWith("notify number") || low.startsWith("notify save")) {
+            val num = Regex("(\\+?\\d{8,15})").find(msg)?.groupValues?.get(1) ?: ""
+            if (num.isBlank()) { chatReply("🔔 Number bolo: notify add 923001234567"); return true }
+            val l = notifyList()
+            if (!l.contains(num)) l.add(num)
+            notifySave(l)
+            chatReply("🔔 Notification number save: $num (ab total ${l.size})\nW9 important cheezain in numbers ko WhatsApp pe bhejega.")
+            return true
+        }
+        if (low == "notify list" || low == "notify numbers") {
+            val l = notifyList()
+            chatReply(if (l.isEmpty()) "🔔 Koi notify number nahi. 'notify add 923001234567' se jodo." else "🔔 Notify numbers:\n" + l.joinToString("\n") { "• $it" } + "\n\n'notify delete <number>' se hatao.")
+            return true
+        }
+        if (low.startsWith("notify delete") || low.startsWith("notify remove")) {
+            val num = Regex("(\\+?\\d{8,15})").find(msg)?.groupValues?.get(1) ?: ""
+            val l = notifyList()
+            l.remove(num)
+            notifySave(l)
+            chatReply(if (num.isBlank()) "❌ Number bolo: notify delete 923001234567" else "🗑️ Hata diya: $num (baqi: ${l.size})")
+            return true
+        }
+        if (low.startsWith("notify ") && !low.contains("add") && !low.contains("delete") && !low.contains("list") && !low.contains("number") && !low.contains("save") && !low.contains("remove")) {
+            val text = msg.trim().substring(msg.trim().lowercase().indexOf("notify") + 7).trim()
+            if (text.isBlank()) { chatReply("🔔 Kya bhejna hai? Misal: notify light band karo yaad dila dena"); return true }
+            val nums = notifyList()
+            if (nums.isEmpty()) { chatReply("🔔 Pehle number jodo: notify add 923001234567"); return true }
+            chatReply("⏳ ${nums.size} number/numbers pe WhatsApp notification bhej raha hoon...")
+            Thread {
+                val t = waWebTab()
+                if (t != null) {
+                    val results = nums.map { n -> waSend(n, text) }
+                    runOnUiThread { chatReply(results.joinToString("\n")) }
+                } else {
+                    runOnUiThread {
+                        try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/${nums[0]}?text=" + java.net.URLEncoder.encode(text, "UTF-8")))) } catch (_: Exception) {}
+                        chatReply("⚠️ WhatsApp Web nahi khuli thi, is liye pehla number khul kar message bhar diya — khud Send dabana.\nPoori automation ke liye pehle 'whatsapp web' likh kar QR scan karo.")
+                    }
+                }
+            }.start()
+            return true
+        }
+
+
         if (low.startsWith("run ")) { runShell(msg.substring(4).trim(), fromChat = true); chatReply("⏳ Command chal raha hai terminal mein..."); return true }
         if (low.startsWith("python ") || low.startsWith("py ")) { runPython(msg.substring(low.indexOf(' ') + 1).trim(), fromChat = true); return true }
         if (low.startsWith("project ")) {
@@ -563,6 +1137,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onBackPressed() {
         if (terminalScreen.visibility == View.VISIBLE) { showTerminal(false); return }
+        if (browserScreen.visibility == View.VISIBLE) { val t = webActive(); if (t != null && t.wv.canGoBack()) t.wv.goBack() else showBrowser(false); return }
         if (nativeScreen.visibility == View.VISIBLE) { showNative(false); return }
         if (webView.canGoBack()) { webView.goBack(); return }
         super.onBackPressed()
@@ -652,6 +1227,34 @@ class MainActivity : AppCompatActivity() {
                 inputPhone.setText(phone)
                 openWhatsApp()
             }
+        }
+
+        // ---------- v3.0: offline voice ----------
+        @JavascriptInterface
+        fun voiceReady(): Boolean = SpeechEngine.ready(this@MainActivity)
+
+        @JavascriptInterface
+        fun startVoice() { runOnUiThread { startVoiceCommand() } }
+
+        @JavascriptInterface
+        fun stopVoice() {
+            SpeechEngine.stop()
+            voiceMicOff()
+            chatReply("🎤 Voice band.")
+        }
+
+        @JavascriptInterface
+        fun voiceStatus(): String = SpeechEngine.status(this@MainActivity)
+
+        @JavascriptInterface
+        fun downloadVoiceModel(name: String) {
+            val m = SpeechEngine.find(name)
+            if (m == null) { runOnUiThread { chatReply("❌ Voice model nahi mila: $name — "voice" likho options ke liye.") }; return }
+            chatReply("⬇️ ${m.display} download shuru (${m.size})...")
+            Thread {
+                val res = SpeechEngine.download(this@MainActivity, m) { p -> runOnUiThread { status(p) } }
+                runOnUiThread { chatReply(res) }
+            }.start()
         }
     }
 
@@ -749,6 +1352,7 @@ class MainActivity : AppCompatActivity() {
             REQ_CALL -> doCall()
             REQ_CONTACTS -> { pendingBrainSave?.let { doSaveContact(it.first, it.second); pendingBrainSave = null } ?: saveContact() }
             REQ_ENDCALL -> doEndCall()
+            REQ_MIC -> startVoiceForReal()
         }
     }
 
@@ -793,6 +1397,97 @@ class MainActivity : AppCompatActivity() {
             }
             if (fromChat) chatReply("🔐 Pehli baar device admin permission chahiye — screen pe 'Activate' dabao (sirf ek baar). Phir dobara 'lock my phone' bolo.")
         }
+    }
+
+    // ---------- v3.0: speaker (call ke dor) ----------
+    private fun speakerSet(on: Boolean): String {
+        return try {
+            val am = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+            if (android.os.Build.VERSION.SDK_INT >= 31) {
+                if (on) {
+                    val dev = am.availableCommunicationDevices.firstOrNull { it.type == android.media.AudioDeviceInfo.TYPE_SPEAKER }
+                    if (dev != null) am.setCommunicationDevice(dev) else return "❌ Is phone mein speaker device nahi mila."
+                } else am.clearCommunicationDevice()
+            } else {
+                @Suppress("DEPRECATION") am.isSpeakerphoneOn = on
+            }
+            if (on) "📢 Speaker on! (Call chal rahi ho to awaas ab speaker se aayegi.)" else "🔇 Speaker band. Ab earpiece se."
+        } catch (e: Exception) { "❌ Speaker fail: " + e.message }
+    }
+
+    // ---------- v3.0: torch (flashlight) ----------
+    private var torchOnNow = false
+    private fun torchSet(on: Boolean) {
+        try {
+            val cm = getSystemService(Context.CAMERA_SERVICE) as android.hardware.camera2.CameraManager
+            val id = cm.cameraIdList.firstOrNull { cm.getCameraCharacteristics(it).get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE) == true }
+                ?: cm.cameraIdList.firstOrNull()
+            if (id == null) { chatReply("❌ Torch (flash) is phone mein available nahi."); return }
+            cm.setTorchMode(id, on)
+            torchOnNow = on
+        } catch (e: Exception) { chatReply("❌ Torch fail: " + e.message) }
+    }
+
+    // ---------- v3.0: volume ----------
+    private fun audio(): android.media.AudioManager = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+    private fun volumeAdj(dir: Int) {
+        try { audio().adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, dir, 0) } catch (e: Exception) {}
+        if (dir == android.media.AudioManager.ADJUST_MUTE) chatReply("🔇 Volume mute kar diya.")
+    }
+    private fun volumeMax() {
+        try {
+            val am = audio()
+            am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC), 0)
+            chatReply("🔊 Volume full kar diya.")
+        } catch (e: Exception) { chatReply("❌ Volume fail: " + e.message) }
+    }
+
+    // ---------- v3.0: OFFLINE VOICE (Vosk) — mic = typing ----------
+    private fun micPermitted(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+    private fun startVoiceCommand() {
+        if (!SpeechEngine.ready(this)) { chatReply(SpeechEngine.status(this)); return }
+        if (!micPermitted()) { ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), REQ_MIC); return }
+        startVoiceForReal()
+    }
+
+    private fun startVoiceForReal() {
+        val res = SpeechEngine.start(this,
+            onPartial = { p ->
+                runOnUiThread {
+                    try { webView.evaluateJavascript("(function(){var i=document.getElementById('msg'); if(i){i.value=" + JSONObject.quote(p) + ";} if(typeof autoGrow==='function')autoGrow(); if(typeof setSend==='function')setSend();})()", null) } catch (_: Exception) {}
+                }
+            },
+            onFinal = { f ->
+                runOnUiThread { sendAsTyped(f) }
+            },
+            onError = { e ->
+                runOnUiThread {
+                    voiceMicOff()
+                    chatReply("🎤 Voice error: $e")
+                }
+            })
+        if (res.startsWith("🎤")) {
+            voiceMicOn()
+        }
+        chatReply(res)
+    }
+
+    private fun sendAsTyped(text: String) {
+        try {
+            webView.evaluateJavascript(
+                "(function(){var i=document.getElementById('msg'); if(i){i.value=" + JSONObject.quote(text) + ";} if(typeof autoGrow==='function')autoGrow(); if(typeof setSend==='function')setSend(); if(typeof send==='function'){send();}})()",
+                null)
+        } catch (e: Exception) { chatReply(text) }
+    }
+
+    private fun voiceMicOn() {
+        try { webView.evaluateJavascript("(function(){window.__abVoiceOn=true; var m=document.getElementById('mic'); if(m){m.classList.add('rec'); m.title='Sun raha hoon... dabao band karne ke liye';}})()", null) } catch (_: Exception) {}
+    }
+
+    private fun voiceMicOff() {
+        try { webView.evaluateJavascript("(function(){window.__abVoiceOn=false; var m=document.getElementById('mic'); if(m){m.classList.remove('rec'); m.title='Voice input (offline engine)';}})()", null) } catch (_: Exception) {}
     }
 
     // ---------- v2.6: brain contact → phone contact book bhi ----------
