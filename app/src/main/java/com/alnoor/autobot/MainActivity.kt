@@ -18,6 +18,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
@@ -809,7 +810,7 @@ class MainActivity : AppCompatActivity() {
         if (low.startsWith("voice download") || low.startsWith("mic download")) {
             val name = msg.substring(msg.indexOf("download") + 8).trim()
             val m = SpeechEngine.find(name)
-            if (m == null) { chatReply("❌ Voice model nahi mila: "$name". Options: ${SpeechEngine.MODELS.joinToString { it.name }}"); return true }
+            if (m == null) { chatReply("❌ Voice model nahi mila: '$name'. Options: ${SpeechEngine.MODELS.joinToString { it.name }}"); return true }
             chatReply("⬇️ ${m.display} download shuru (${m.size})...")
             Thread { val res = SpeechEngine.download(this, m) { p -> runOnUiThread { status(p) } }; runOnUiThread { chatReply(res) } }.start()
             return true
@@ -823,7 +824,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (low == "voice delete" || low.startsWith("voice delete ") || low.startsWith("mic delete")) {
             val name = msg.substring(msg.indexOf("delete") + 6).trim()
-            chatReply(if (name.isBlank()) "❌ Model naam bolo: "voice delete english" ya "voice delete urdu-hindi"" else SpeechEngine.delete(this, name)); return true
+            chatReply(if (name.isBlank()) "❌ Model naam bolo: 'voice delete english' ya 'voice delete urdu-hindi'" else SpeechEngine.delete(this, name)); return true
         }
         if (low == "mic on" || low == "voice on" || low == "suno" || low == "sunno" || low == "sun" || low == "mic start" || low == "voice start") { runOnUiThread { startVoiceCommand() }; return true }
         if (low == "mic off" || low == "voice off" || low == "mic stop" || low == "voice stop" || low == "bas" || low == "chup") { runOnUiThread { SpeechEngine.stop(); voiceMicOff() }; chatReply("🎤 Voice band."); return true }
