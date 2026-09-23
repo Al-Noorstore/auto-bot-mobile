@@ -1462,7 +1462,7 @@ class MainActivity : AppCompatActivity() {
             onFinal = { f ->
                 runOnUiThread { sendAsTyped(f) }
             },
-            onError = { e ->
+            onFail = { e ->
                 runOnUiThread {
                     voiceMicOff()
                     chatReply("🎤 Voice error: $e")

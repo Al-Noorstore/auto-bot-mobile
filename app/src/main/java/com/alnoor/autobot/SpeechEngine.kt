@@ -4,6 +4,7 @@ import android.content.Context
 import org.json.JSONObject
 import org.vosk.Model
 import org.vosk.Recognizer
+import org.vosk.android.RecognitionListener
 import org.vosk.android.SpeechService
 import java.io.File
 import java.io.FileOutputStream
@@ -164,7 +165,7 @@ object SpeechEngine {
             model = Model(dir(ctx, m).absolutePath)
             recognizer = Recognizer(model, 16000.0f)
             service = SpeechService(recognizer, 16000.0f)
-            service?.startListening(object : SpeechService.Listener {
+            service?.startListening(object : RecognitionListener {
                 override fun onPartialResult(hypothesis: String?) {
                     val t = try { JSONObject(hypothesis ?: "").optString("partial", "") } catch (_: Exception) { "" }
                     if (t.isNotBlank()) onPartial(t.trim())
@@ -196,7 +197,7 @@ object SpeechEngine {
 
     fun stop() {
         try { service?.stop() } catch (_: Exception) {}
-        try { service?.close() } catch (_: Exception) {}
+        try { service?.shutdown() } catch (_: Exception) {}
         try { recognizer?.close() } catch (_: Exception) {}
         try { model?.close() } catch (_: Exception) {}
         service = null; recognizer = null; model = null

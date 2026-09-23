@@ -875,7 +875,7 @@ Waqt hone par loud alarm bajega — Snooze/Stop ke saath."
                     r.buttons.add(BrainButton("🔴 End Call", "endcall"))
                 }
                 else -> {
-                    pending = Pending().apply { kind = "choice"; contacts = hits; purpose = "call" }
+                    pending = Pending().apply { kind = "choice"; this.contacts = hits; purpose = "call" }
                     val names = hits.mapIndexed { i, c -> "${i + 1}. ${c.name}" + (if (c.relation != null) " (${c.relation})" else "") }
                     r.text = "🤔 ${hits.size} log mile:\n${names.joinToString("\n")}\nKis ko call karna hai? Naam ya number bolo."
                 }
@@ -988,7 +988,7 @@ Waqt hone par loud alarm bajega — Snooze/Stop ke saath."
                     r.buttons.add(BrainButton("💬 WhatsApp", "wa", c.phone))
                 }
                 else -> {
-                    pending = Pending().apply { kind = "choice"; contacts = hits; purpose = "show" }
+                    pending = Pending().apply { kind = "choice"; this.contacts = hits; purpose = "show" }
                     val names = hits.mapIndexed { i, c -> "${i + 1}. ${c.name}" + (if (c.relation != null) " (${c.relation})" else "") }
                     r.text = "🤔 ${hits.size} log mile:\n${names.joinToString("\n")}\nKis ka number chahiye? Naam ya number bolo."
                 }
