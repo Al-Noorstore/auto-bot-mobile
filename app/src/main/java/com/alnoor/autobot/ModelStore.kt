@@ -24,6 +24,9 @@ object ModelStore {
             "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf")
     )
 
+    /** Progress bar ke liye: har 1% par 0..100 milta hai (MainActivity set karta hai). */
+    @Volatile var pctListener: ((Int) -> Unit)? = null
+
     fun dir(ctx: Context): File =
         File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "models").apply { mkdirs() }
 
@@ -54,6 +57,7 @@ object ModelStore {
                 val total = conn.contentLengthLong
                 var done = 0L
                 var lastPct = -1
+                var lastBar = -1
                 conn.inputStream.use { inp ->
                     FileOutputStream(target).use { out ->
                         val buf = ByteArray(64 * 1024)
@@ -64,6 +68,7 @@ object ModelStore {
                             done += n
                             if (total > 0) {
                                 val pct = (done * 100 / total).toInt()
+                                if (pct != lastBar) { lastBar = pct; pctListener?.invoke(pct) }
                                 if (pct != lastPct && pct % 5 == 0) {
                                     lastPct = pct
                                     onProgress("⬇️ ${model.name}: $pct% (${done / 1048576}/${total / 1048576} MB)")

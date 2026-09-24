@@ -69,6 +69,9 @@ object SpeechEngine {
         return sb.toString()
     }
 
+    /** Progress bar ke liye: har 1% par 0..100 milta hai (MainActivity set karta hai). */
+    @Volatile var pctListener: ((Int) -> Unit)? = null
+
     /** Model download + unzip (zip-slip safe). Background thread se call karo. */
     fun download(ctx: Context, m: VoiceModel, progress: (String) -> Unit): String {
         val out = dir(ctx, m)
@@ -82,6 +85,7 @@ object SpeechEngine {
             val total = conn.contentLengthLong
             val tmp = File(ctx.cacheDir, m.name + ".zip")
             var lastPct = -1
+            var lastBar = -1
             conn.inputStream.use { input ->
                 FileOutputStream(tmp).use { fos ->
                     val buf = ByteArray(8192)
@@ -92,6 +96,7 @@ object SpeechEngine {
                         done += read
                         if (total > 0) {
                             val pct = (done * 100 / total).toInt()
+                            if (pct != lastBar) { lastBar = pct; pctListener?.invoke(pct) }
                             if (pct >= lastPct + 10) { lastPct = pct; progress("⬇️ ${m.display}: $pct%") }
                         }
                     }

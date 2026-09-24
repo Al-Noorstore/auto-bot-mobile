@@ -171,22 +171,67 @@ class MainActivity : AppCompatActivity() {
                 }
               }
             }
-            // v3.0: OFFLINE VOICE (Vosk) — mic button native engine se (model ready ho to)
+            // SMART FALLBACK: server ka lamba help-message ki jagah smart jawab
+            if (window.AutoBotNative && typeof window.bubble === 'function' && !window.__abBubblePatched) {
+              window.__abBubblePatched = true;
+              var _abOB = window.bubble;
+              window.bubble = function (role, text) {
+                try {
+                  if (role === 'bot' && typeof text === 'string' && text.indexOf('Ye commands abhi chalte hain') >= 0 && AutoBotNative.smartFallback) {
+                    var _sf = AutoBotNative.smartFallback(window.__lastLocalMsg || '');
+                    if (!_sf) { return; }
+                    text = _sf;
+                  }
+                } catch (e) {}
+                return _abOB.call(this, role, text);
+              };
+            }
+            // NEON DOWNLOAD BAR: chat mein live progress (0% -> 100%)
+            window.__abBar = function (id, label, pct, err) {
+              try {
+                var msgs = document.getElementById('msgs'); if (!msgs) return;
+                var el = document.getElementById('abbar-' + id);
+                if (!el) {
+                  var tp = document.getElementById('typing'); if (tp) tp.remove();
+                  el = document.createElement('div'); el.id = 'abbar-' + id; el.className = 'msg bot';
+                  el.innerHTML = '<div class="bubble" style="min-width:240px">' +
+                    '<div class="abbar-l" style="font-size:14px;margin-bottom:8px"></div>' +
+                    '<div style="background:#0b1220;border-radius:12px;height:16px;overflow:hidden;border:1px solid #1e293b">' +
+                    '<div class="abbar-f" style="height:100%;width:0%;border-radius:12px;background:linear-gradient(90deg,#00f0ff,#39ff14);box-shadow:0 0 10px #39ff14,0 0 18px #00f0ff;transition:width .35s ease"></div></div>' +
+                    '<div class="abbar-p" style="text-align:right;font-weight:700;font-size:13px;margin-top:6px;color:#00a896">0%</div></div>';
+                  msgs.appendChild(el);
+                }
+                el.querySelector('.abbar-l').textContent = label;
+                var f = el.querySelector('.abbar-f'), p = el.querySelector('.abbar-p');
+                if (pct >= 0) { f.style.width = pct + '%'; p.textContent = pct + '%'; }
+                if (err) { f.style.background = '#ff3b5c'; f.style.boxShadow = '0 0 10px #ff3b5c'; p.style.color = '#ff3b5c'; }
+                var v = document.getElementById('view'); if (v) v.scrollTop = v.scrollHeight;
+              } catch (e) {}
+            };
+            // v3.0 FIX: mic hamesha native engine se (Vosk model ho to offline, warna Google speech).
+            // WebView mein Web Speech API hota hi nahi, is liye page ka micToggle replace kiya.
             try {
-              var _mc = document.getElementById('mic');
-              if (_mc && window.AutoBotNative) {
-                _mc.title = 'Voice input (offline engine)';
-                if (!_mc.__abVoicePatched) {
-                  _mc.__abVoicePatched = true;
-                  _mc.addEventListener('click', function (ev) {
-                    try {
-                      if (AutoBotNative.voiceReady && AutoBotNative.voiceReady()) {
-                        ev.stopImmediatePropagation(); ev.preventDefault();
-                        if (window.__abVoiceOn) { AutoBotNative.stopVoice(); }
-                        else { AutoBotNative.startVoice(); }
-                      }
-                    } catch (e) {}
-                  }, true);
+              if (window.AutoBotNative) {
+                window.__abMicClick = function () {
+                  var now = Date.now();
+                  if (window.__abMicLast && now - window.__abMicLast < 700) return;
+                  window.__abMicLast = now;
+                  try {
+                    if (window.__abVoiceOn) { AutoBotNative.stopVoice(); }
+                    else { AutoBotNative.startVoice(); }
+                  } catch (e) {}
+                };
+                window.micToggle = window.__abMicClick;
+                var _mc = document.getElementById('mic');
+                if (_mc) {
+                  _mc.title = 'Voice input';
+                  if (!_mc.__abVoicePatched) {
+                    _mc.__abVoicePatched = true;
+                    _mc.addEventListener('click', function (ev) {
+                      ev.stopImmediatePropagation(); ev.preventDefault();
+                      window.__abMicClick();
+                    }, true);
+                  }
                 }
               }
             } catch (e) {}
@@ -522,6 +567,156 @@ class MainActivity : AppCompatActivity() {
         if (show && termSessions.isEmpty()) termNewSession()
     }
 
+    // ---------- NEON DOWNLOAD BAR helpers ----------
+    private fun barJs(id: String, label: String, pct: Int, err: Boolean = false) {
+        runOnUiThread {
+            try { webView.evaluateJavascript("window.__abBar&&window.__abBar(" + JSONObject.quote(id) + "," + JSONObject.quote(label) + "," + pct + "," + err + ")", null) } catch (_: Exception) {}
+        }
+    }
+
+    private fun voiceDownloadWithBar(m: SpeechEngine.VoiceModel) {
+        val id = "v" + System.currentTimeMillis()
+        val label = "⬇️ ${m.display} (${m.size})"
+        barJs(id, label, 0)
+        var last = -1
+        SpeechEngine.pctListener = { p -> if (p != last) { last = p; barJs(id, label, p.coerceAtMost(99)) } }
+        Thread {
+            val res = SpeechEngine.download(this, m) { p -> runOnUiThread { status(p) } }
+            SpeechEngine.pctListener = null
+            val ok = res.startsWith("✅")
+            barJs(id, (if (ok) "✅ " else "❌ ") + m.display, if (ok) 100 else -1, !ok)
+            chatReply(res)
+        }.start()
+    }
+
+    private fun modelDownloadWithBar(m: ModelStore.Model) {
+        val id = "m" + System.currentTimeMillis()
+        val label = "⬇️ ${m.name} (${m.size})"
+        barJs(id, label, 0)
+        var last = -1
+        ModelStore.pctListener = { p -> if (p != last) { last = p; barJs(id, label, p.coerceAtMost(99)) } }
+        Thread {
+            val res = ModelStore.download(this, m) { p -> appendTerm(p) }
+            ModelStore.pctListener = null
+            val ok = res.startsWith("✅")
+            barJs(id, (if (ok) "✅ " else "❌ ") + m.name, if (ok) 100 else -1, !ok)
+            appendTerm(res)
+            chatReply(res)
+        }.start()
+    }
+
+    // ---------- NEW: API key chat se ----------
+    private fun handleApiKeyCommand(msg: String) {
+        val parts = msg.trim().split(Regex("\\s+"))
+        val skip = if (parts[0].lowercase() == "apikey" || parts[0].lowercase() == "api-key") 1 else 2
+        val rest = parts.drop(skip)
+        val sub = rest.firstOrNull()?.lowercase() ?: ""
+        val keys = KeyStore.load(this)
+        fun masked(k: String) = if (k.length <= 8) "****" else k.take(4) + "…" + k.takeLast(4)
+        when {
+            sub == "list" || sub == "keys" -> {
+                chatReply(if (keys.isEmpty()) "🔑 Koi key nahi. Likho: api key <apni-key>"
+                else "🔑 Saved keys:\n" + keys.joinToString("\n") { (if (it.active) "🟢 " else "⚪ ") + it.label + " [" + it.provider + "] " + masked(it.key) + (if (!it.enabled) " (OFF)" else "") } +
+                        "\n\napi key use <label> | api key delete <label> | api key test")
+            }
+            sub == "delete" || sub == "hatao" || sub == "remove" -> {
+                val lb = rest.drop(1).firstOrNull() ?: ""
+                chatReply(if (keys.any { it.label == lb }) KeyStore.remove(this, lb) else "❌ Label nahi mila. 'api key list' se label dekho.")
+            }
+            sub == "use" || sub == "active" -> {
+                val lb = rest.drop(1).firstOrNull() ?: ""
+                chatReply(KeyStore.setActive(this, lb))
+            }
+            sub == "test" -> {
+                val k = KeyStore.active(this)
+                if (k == null) chatReply("❌ Koi active key nahi.") else { chatReply("🔍 Test kar raha hoon..."); Thread { chatReply("🔑 ${k.label}: " + AIBrain.testKey(k)) }.start() }
+            }
+            else -> {
+                val keyTok = rest.firstOrNull { it.length >= 16 }
+                if (keyTok == null) {
+                    chatReply("🔑 Key connect karne ke liye key paste karo:\n• api key <key>   (Gemini/OpenAI/Groq/OpenRouter khud pehchan lunga)\n• ya: api key gemini <key>\n• Free Gemini key: aistudio.google.com/apikey\n\nSettings → API Keys se bhi add kar sakte ho.")
+                    return
+                }
+                val wordProv = rest.firstNotNullOfOrNull { w ->
+                    if (w === keyTok || w.length < 3) null else KeyStore.providers.firstOrNull { p -> p.lowercase().startsWith(w.lowercase()) }
+                }
+                val provider = wordProv ?: when {
+                    keyTok.startsWith("AIza") -> "Gemini"
+                    keyTok.startsWith("sk-or-") -> "OpenRouter"
+                    keyTok.startsWith("gsk_") -> "Groq"
+                    keyTok.startsWith("sk-") -> "OpenAI"
+                    else -> null
+                }
+                if (provider == null) { chatReply("❓ Provider samajh nahi aaya. Likho: api key gemini <key>\nOptions: " + KeyStore.providers.joinToString(", ")); return }
+                val label = provider.split(" ")[0] + "-" + keyTok.takeLast(4)
+                val k = KeyStore.ApiKey(provider, label, keyTok, KeyStore.defaultBase(provider), KeyStore.defaultModel(provider))
+                // chat history mein poori key na rahe
+                runOnUiThread { try { webView.evaluateJavascript("window.__lastLocalMsg='api key " + provider + " ****" + keyTok.takeLast(4) + "'", null) } catch (_: Exception) {} }
+                chatReply(KeyStore.add(this, k) + "\n🔍 Test kar raha hoon...")
+                Thread { chatReply("🔑 $label: " + AIBrain.testKey(k) + "\nAb koi bhi sawal likho ya 'ask <sawal>' — AI jawab dega.") }.start()
+            }
+        }
+    }
+
+    // ---------- NEW: apps list + install source ----------
+    private fun launchableApps(): List<Pair<String, String>> {
+        val pm = packageManager
+        return pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0)
+            .map { it.loadLabel(pm).toString() to it.activityInfo.packageName }
+            .distinctBy { it.second }.sortedBy { it.first.lowercase() }
+    }
+
+    private fun appsListReply(filter: String): String {
+        val pm = packageManager
+        val all = launchableApps()
+        val list = if (filter.isBlank()) all else all.filter { it.first.lowercase().contains(filter) || it.second.lowercase().contains(filter) }
+        if (list.isEmpty()) return "❌ '$filter' naam ki koi app nahi mili."
+        val userCount = all.count { try { (pm.getApplicationInfo(it.second, 0).flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0 } catch (_: Exception) { true } }
+        val head = if (filter.isBlank()) "📱 ${all.size} apps (${userCount} aapki install ki hui, ${all.size - userCount} system):\n\n" else "📱 ${list.size} match:\n\n"
+        val shown = list.take(80).joinToString("\n") { "• " + it.first }
+        return head + shown + (if (list.size > 80) "\n… aur ${list.size - 80}" else "") + "\n\nApp ka source: install source <naam>"
+    }
+
+    private fun installSourceReply(name: String): String {
+        val pkg = findLaunchPackage(name) ?: return "❌ App nahi mili: $name"
+        val pm = packageManager
+        val label = try { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() } catch (_: Exception) { name }
+        val installer: String? = try {
+            if (android.os.Build.VERSION.SDK_INT >= 30) pm.getInstallSourceInfo(pkg).installingPackageName
+            else pm.getInstallerPackageName(pkg)
+        } catch (_: Exception) { null }
+        val src = when (installer) {
+            "com.android.vending" -> "Google Play Store"
+            "com.sec.android.app.samsungapps" -> "Samsung Galaxy Store"
+            "com.xiaomi.mipicks", "com.xiaomi.market" -> "Xiaomi GetApps"
+            "com.huawei.appmarket" -> "Huawei AppGallery"
+            "com.amazon.venezia" -> "Amazon Appstore"
+            "com.google.android.packageinstaller", "com.android.packageinstaller", "com.miui.packageinstaller" -> "APK file (manual / sideload)"
+            null -> "Unknown (adb / system app / source chhupa hua)"
+            else -> installer
+        }
+        val pi = try { pm.getPackageInfo(pkg, 0) } catch (_: Exception) { null }
+        val date = pi?.let { java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.US).format(java.util.Date(it.firstInstallTime)) } ?: "?"
+        return "📦 $label ($pkg)\n📥 Source: $src\n🔢 Version: ${pi?.versionName ?: "?"}\n📅 Pehli install: $date"
+    }
+
+    // FIX: launcher apps se label match (Android 11+ safe) — YouTube, WhatsApp, koi bhi app
+    private fun findLaunchPackage(name: String): String? {
+        val n = name.trim().lowercase()
+        if (n.isBlank()) return null
+        if (n.contains(".") && !n.contains(" ")) return n
+        val pm = packageManager
+        val q = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        var partial: String? = null
+        for (ri in pm.queryIntentActivities(q, 0)) {
+            val lbl = ri.loadLabel(pm).toString().lowercase()
+            val pkg = ri.activityInfo.packageName
+            if (lbl == n) return pkg
+            if (partial == null && (lbl.contains(n) || (lbl.length >= 3 && n.contains(lbl)))) partial = pkg
+        }
+        return partial
+    }
+
     private fun openAppByName(name: String): String {
         val n = name.trim().lowercase()
         val pkgMap = mapOf(
@@ -535,19 +730,17 @@ class MainActivity : AppCompatActivity() {
             "tiktok" to "com.zhiliaoapp.musically", "spotify" to "com.spotify.music",
             "telegram" to "org.telegram.messenger", "settings" to "com.android.settings"
         )
-        var pkg = pkgMap[n] ?: if (n.contains(".")) n else null
-        if (pkg == null) { // fuzzy: koi bhi installed app jiska naam match kare
-            for (pi in packageManager.getInstalledPackages(0)) {
-                val lbl = pi.applicationInfo.loadLabel(packageManager).toString().lowercase()
-                if (lbl.contains(n)) { pkg = pi.packageName; break }
-            }
-        }
-        if (pkg == null) return "App nahi mili: $name. Spelling check karo ya package naam do (e.g. open com.whatsapp)."
+        var pkg: String? = pkgMap[n]
+        // map wala package phone mein na ho (e.g. camera) to label se dhoondo
+        if (pkg != null && packageManager.getLaunchIntentForPackage(pkg) == null) pkg = null
+        if (pkg == null) pkg = findLaunchPackage(n)
+        if (pkg == null) return "❌ App nahi mili: $name. Spelling check karo ya package naam do (e.g. open com.whatsapp)."
         return try {
-            val intent = packageManager.getLaunchIntentForPackage(pkg) ?: return "App installed nahi hai: $pkg"
+            val intent = packageManager.getLaunchIntentForPackage(pkg) ?: return "❌ App installed nahi hai: $pkg"
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             startActivity(intent)
             "✅ App khul gayi: $name"
-        } catch (e: Exception) { "App open fail: " + e.message }
+        } catch (e: Exception) { "❌ App open fail: " + e.message }
     }
 
     private fun openUrl(url: String) { try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse(url))); } catch (e: Exception) {} }
@@ -563,20 +756,31 @@ class MainActivity : AppCompatActivity() {
             "tiktok" to "com.zhiliaoapp.musically", "spotify" to "com.spotify.music",
             "telegram" to "org.telegram.messenger"
         )
-        var pkg = pkgMap[n] ?: if (n.contains(".")) n else null
-        if (pkg == null) {
-            for (pi in packageManager.getInstalledPackages(0)) {
-                val lbl = pi.applicationInfo.loadLabel(packageManager).toString().lowercase()
-                if (lbl.contains(n)) { pkg = pi.packageName; break }
-            }
-        }
-        if (pkg == null) return "App nahi mili: $name"
+        var pkg: String? = pkgMap[n]
+        if (pkg != null && packageManager.getLaunchIntentForPackage(pkg) == null) pkg = null
+        if (pkg == null) pkg = findLaunchPackage(n)
+        if (pkg == null) return "❌ App nahi mili: $name"
+        if (pkg == packageName) return "❌ Main khud ko band nahi kar sakta."
         return try {
+            // 1) ROOT ho to asli force-stop
+            val rooted = try { Shell.isAppGrantedRoot() == true } catch (_: Throwable) { false }
+            if (rooted) {
+                Shell.cmd("am force-stop $pkg").exec()
+                return "✅ $name force-stop ho gaya (root)."
+            }
+            // 2) Non-root: sirf background/cached process khatam hota hai
             (getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager).killBackgroundProcesses(pkg)
-            // user ko home screen par bhejo
-            startActivity(android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME).setFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
-            "✅ $name band ho gaya (background se band kiya — Android kisi app ko force nahi rok sakta jab wo foreground mein ho)."
-        } catch (e: Exception) { "App close fail: " + e.message }
+            "✅ $name ka background process band kar diya.\nℹ️ Android bina root ke foreground app ko force-stop nahi karne deta. Agar abhi bhi chal rahi ho to App Info se 'Force stop' dabao: \"appinfo $name\" likho."
+        } catch (e: Exception) { "❌ App close fail: " + e.message }
+    }
+
+    // App Info screen kholna (Force stop button wahan hota hai)
+    private fun openAppInfo(name: String): String {
+        val pkg = findLaunchPackage(name) ?: return "❌ App nahi mili: $name"
+        return try {
+            startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$pkg")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            "⚙️ $name ki App Info khol di — 'Force stop' dabao."
+        } catch (e: Exception) { "❌ App Info fail: " + e.message }
     }
 
     // ---------- lifecycle ----------
@@ -778,9 +982,9 @@ class MainActivity : AppCompatActivity() {
                         "call" -> runOnUiThread { inputPhone.setText(a.arg); autoCall() }
                         "endcall" -> runOnUiThread { endCallAction(false) }
                         "lock" -> runOnUiThread { lockPhone(false) }
-                        "openapp" -> runOnUiThread { openAppByName(a.arg) }
+                        "openapp" -> runOnUiThread { val r = openAppByName(a.arg); if (!r.startsWith("✅")) chatReply(r) }
                         "phonebook" -> runOnUiThread { brainSavePhonebook(a.arg, a.arg2) }
-                        "closeapp" -> runOnUiThread { chatReply(closeAppByName(a.arg)) }
+                        "closeapp" -> Thread { chatReply(closeAppByName(a.arg)) }.start()
                         "youtubesearch" -> runOnUiThread { openUrl("https://www.youtube.com/results?search_query=" + java.net.URLEncoder.encode(a.arg, "UTF-8")) }
                         "browsersearch" -> runOnUiThread { openUrl("https://www.google.com/search?q=" + java.net.URLEncoder.encode(a.arg, "UTF-8")) }
                         "openurl" -> runOnUiThread { openUrl(a.arg) }
@@ -795,7 +999,7 @@ class MainActivity : AppCompatActivity() {
                         "dlmodel" -> {
                             val m = ModelStore.find(a.arg)
                             if (m == null) chatReply("❌ Model samajh nahi aaya: ${a.arg}")
-                            else { chatReply("⬇️ ${m.name} (${m.size}) download shuru..."); Thread { appendTerm(ModelStore.download(this, m) { p -> appendTerm(p) }) }.start() }
+                            else { webView.postDelayed({ modelDownloadWithBar(m) }, 350) }
                         }
                     }
                 }
@@ -805,14 +1009,26 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) { /* brain fail = normal flow */ }
         if (low == "admin" || low == "admin panel") { runOnUiThread { startActivity(Intent(this, AdminPanelActivity::class.java)) }; chatReply("🛡️ Admin Panel khul gaya — API keys, Ollama, models sab wahan."); return true }
         if (low == "settings" || low == "setting" || low == "⚙️" || low.contains("setting khol") || low.contains("settings khol")) { runOnUiThread { startActivity(Intent(this, SettingsActivity::class.java)) }; chatReply("⚙️ Settings khul gaya — Offline Brain, API Keys, Ollama, Transformers tabs wahan hain."); return true }
+        if (low.startsWith("appinfo ") || low.startsWith("app info ")) { val nm = low.substringAfter("info ").trim(); runOnUiThread { chatReply(openAppInfo(nm)) }; return true }
+        // ---------- NEW: help / API key / apps list / install source ----------
+        if (low == "help" || low == "commands" || low == "command list" || low == "madad") { chatReply(SmartFallback.help()); return true }
+        if (low.startsWith("api key") || low.startsWith("apikey") || low.startsWith("api-key") || low.startsWith("key add")) { handleApiKeyCommand(msg); return true }
+        if (low == "apps" || low == "apps list" || low == "app list" || low == "my apps" || low == "meri apps" || low == "installed apps" || low.startsWith("apps list ") || low.startsWith("installed apps ")) {
+            val f = low.removePrefix("installed apps").removePrefix("apps list").trim().let { if (it == "apps" || it == "my apps" || it == "meri apps" || it == "app list") "" else it }
+            chatReply(appsListReply(f)); return true
+        }
+        run {
+            val nm = Regex("^(?:install source|installed from|install source of|source of)\\s+(.+)$").find(low)?.groupValues?.get(1)
+                ?: Regex("^(.+?)\\s+(?:kahan se|kahan say|kis se|kis store se|konsi store se|which store|from where)\\b.*$").find(low)?.groupValues?.get(1)?.takeIf { low.contains("install") || low.contains("download") || low.contains("store") }
+            if (nm != null && nm.isNotBlank()) { chatReply(installSourceReply(nm.trim())); return true }
+        }
         // ---------- v3.0: OFFLINE VOICE commands ----------
         if (low == "voice" || low == "mic" || low == "awaz" || low == "voice status" || low == "mic status" || low.contains("voice setup")) { chatReply(SpeechEngine.status(this)); return true }
         if (low.startsWith("voice download") || low.startsWith("mic download")) {
             val name = msg.substring(msg.indexOf("download") + 8).trim()
             val m = SpeechEngine.find(name)
             if (m == null) { chatReply("❌ Voice model nahi mila: '$name'. Options: ${SpeechEngine.MODELS.joinToString { it.name }}"); return true }
-            chatReply("⬇️ ${m.display} download shuru (${m.size})...")
-            Thread { val res = SpeechEngine.download(this, m) { p -> runOnUiThread { status(p) } }; runOnUiThread { chatReply(res) } }.start()
+            runOnUiThread { voiceDownloadWithBar(m) }
             return true
         }
         if (low.startsWith("voice use") || low.startsWith("mic use") || low.startsWith("voice select")) {
@@ -827,7 +1043,7 @@ class MainActivity : AppCompatActivity() {
             chatReply(if (name.isBlank()) "❌ Model naam bolo: 'voice delete english' ya 'voice delete urdu-hindi'" else SpeechEngine.delete(this, name)); return true
         }
         if (low == "mic on" || low == "voice on" || low == "suno" || low == "sunno" || low == "sun" || low == "mic start" || low == "voice start") { runOnUiThread { startVoiceCommand() }; return true }
-        if (low == "mic off" || low == "voice off" || low == "mic stop" || low == "voice stop" || low == "bas" || low == "chup") { runOnUiThread { SpeechEngine.stop(); voiceMicOff() }; chatReply("🎤 Voice band."); return true }
+        if (low == "mic off" || low == "voice off" || low == "mic stop" || low == "voice stop" || low == "bas" || low == "chup") { runOnUiThread { voiceStopAll() }; chatReply("🎤 Voice band."); return true }
         if (low.startsWith("ask ")) {
             val q = msg.substring(4).trim()
             if (q.isBlank()) { chatReply("Sawal likho: ask <sawal>"); return true }
@@ -858,8 +1074,7 @@ class MainActivity : AppCompatActivity() {
                 rest.startsWith("download") -> {
                     val m = ModelStore.find(rest.removePrefix("download").trim())
                     if (m == null) { appendTerm("❌ Model samajh nahi aaya — 'transformer list' likho."); return true }
-                    appendTerm("⬇️ ${m.name} (${m.size}) download shuru...")
-                    Thread { appendTerm(ModelStore.download(this, m) { p -> appendTerm(p) }) }.start()
+                    runOnUiThread { modelDownloadWithBar(m) }
                 }
                 rest.startsWith("delete") -> {
                     val m = ModelStore.find(rest.removePrefix("delete").trim())
@@ -1153,6 +1368,15 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun openNativePanel() { runOnUiThread { showNative(true) } }
 
+        // Server ka lamba "commands abhi chalte hain" message ki jagah smart jawab (page ka bubble() isse poochta hai)
+        @JavascriptInterface
+        fun smartFallback(msg: String): String {
+            val m = msg.trim()
+            val hasKey = try { KeyStore.load(this@MainActivity).any { it.enabled && it.key.isNotBlank() } } catch (_: Exception) { false }
+            if (hasKey && m.isNotBlank()) { runCommand("ask " + m.lowercase(), "ask $m"); return "" }
+            return SmartFallback.reply(m.lowercase())
+        }
+
         @JavascriptInterface
         fun openTerminal() { runOnUiThread { showTerminal(true) } }
 
@@ -1214,9 +1438,7 @@ class MainActivity : AppCompatActivity() {
         fun downloadModel(name: String) {
             val m = ModelStore.find(name)
             if (m == null) { runOnUiThread { chatReply("❌ Model samajh nahi aaya: $name") }; return }
-            Thread {
-                appendTerm(ModelStore.download(this@MainActivity, m) { p -> appendTerm(p) })
-            }.start()
+            runOnUiThread { modelDownloadWithBar(m) }
         }
 
         @JavascriptInterface
@@ -1239,8 +1461,7 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun stopVoice() {
-            SpeechEngine.stop()
-            voiceMicOff()
+            runOnUiThread { voiceStopAll() }
             chatReply("🎤 Voice band.")
         }
 
@@ -1251,11 +1472,7 @@ class MainActivity : AppCompatActivity() {
         fun downloadVoiceModel(name: String) {
             val m = SpeechEngine.find(name)
             if (m == null) { runOnUiThread { chatReply("❌ Voice model nahi mila: $name — 'voice' likho options ke liye.") }; return }
-            chatReply("⬇️ ${m.display} download shuru (${m.size})...")
-            Thread {
-                val res = SpeechEngine.download(this@MainActivity, m) { p -> runOnUiThread { status(p) } }
-                runOnUiThread { chatReply(res) }
-            }.start()
+            runOnUiThread { voiceDownloadWithBar(m) }
         }
     }
 
@@ -1353,7 +1570,7 @@ class MainActivity : AppCompatActivity() {
             REQ_CALL -> doCall()
             REQ_CONTACTS -> { pendingBrainSave?.let { doSaveContact(it.first, it.second); pendingBrainSave = null } ?: saveContact() }
             REQ_ENDCALL -> doEndCall()
-            REQ_MIC -> startVoiceForReal()
+            REQ_MIC -> startVoiceAfterPermission()
         }
     }
 
@@ -1447,10 +1664,84 @@ class MainActivity : AppCompatActivity() {
     private fun micPermitted(): Boolean =
         ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
+    // FIX: pehle permission maango (model ho ya na ho). Vosk model ho to offline, warna phone ka Google speech.
     private fun startVoiceCommand() {
-        if (!SpeechEngine.ready(this)) { chatReply(SpeechEngine.status(this)); return }
         if (!micPermitted()) { ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), REQ_MIC); return }
-        startVoiceForReal()
+        startVoiceAfterPermission()
+    }
+
+    private fun startVoiceAfterPermission() {
+        if (SpeechEngine.ready(this)) startVoiceForReal() else startSystemSpeech()
+    }
+
+    private var sysRecognizer: android.speech.SpeechRecognizer? = null
+    private val SYS_VOICE_LANG = "en-IN" // Urdu ke liye "ur-PK" kar sakte ho
+
+    private fun setInputText(t: String) {
+        try { webView.evaluateJavascript("(function(){var i=document.getElementById('msg'); if(i){i.value=" + JSONObject.quote(t) + ";} if(typeof autoGrow==='function')autoGrow(); if(typeof setSend==='function')setSend();})()", null) } catch (_: Exception) {}
+    }
+
+    private fun stopSystemSpeech() {
+        try { sysRecognizer?.stopListening() } catch (_: Exception) {}
+        try { sysRecognizer?.destroy() } catch (_: Exception) {}
+        sysRecognizer = null
+    }
+
+    private fun voiceStopAll() {
+        SpeechEngine.stop()
+        stopSystemSpeech()
+        voiceMicOff()
+    }
+
+    private fun startSystemSpeech() {
+        try {
+            if (!android.speech.SpeechRecognizer.isRecognitionAvailable(this)) {
+                chatReply("❌ Is phone mein speech service (Google app) nahi mili.\n" + SpeechEngine.status(this))
+                return
+            }
+            stopSystemSpeech()
+            val sr = android.speech.SpeechRecognizer.createSpeechRecognizer(this)
+            sysRecognizer = sr
+            sr.setRecognitionListener(object : android.speech.RecognitionListener {
+                override fun onReadyForSpeech(params: Bundle?) { voiceMicOn(); status("🎤 Sun raha hoon... bolo!") }
+                override fun onBeginningOfSpeech() {}
+                override fun onRmsChanged(rmsdB: Float) {}
+                override fun onBufferReceived(buffer: ByteArray?) {}
+                override fun onEndOfSpeech() {}
+                override fun onError(error: Int) {
+                    voiceMicOff()
+                    val why = when (error) {
+                        android.speech.SpeechRecognizer.ERROR_NO_MATCH, android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Awaz sunai nahi di — dobara mic dabao aur bolo."
+                        android.speech.SpeechRecognizer.ERROR_NETWORK, android.speech.SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Internet nahi — offline ke liye likho: voice download urdu-hindi"
+                        android.speech.SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Mic permission nahi — Settings se allow karo."
+                        android.speech.SpeechRecognizer.ERROR_AUDIO -> "Mic record nahi ho raha (koi dusri app mic use kar rahi hai?)."
+                        else -> "Mic error code $error"
+                    }
+                    chatReply("🎤 $why")
+                }
+                override fun onResults(results: Bundle?) {
+                    voiceMicOff()
+                    val t = results?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
+                    if (t.isNotEmpty()) sendAsTyped(t) else chatReply("🎤 Kuch samajh nahi aaya — dobara try karo.")
+                }
+                override fun onPartialResults(partialResults: Bundle?) {
+                    val t = partialResults?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
+                    if (t.isNotEmpty()) setInputText(t)
+                }
+                override fun onEvent(eventType: Int, params: Bundle?) {}
+            })
+            val i = Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, SYS_VOICE_LANG)
+                putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                putExtra(android.speech.RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
+            }
+            sr.startListening(i)
+            voiceMicOn()
+        } catch (e: Exception) {
+            voiceMicOff()
+            chatReply("❌ Mic start fail: " + e.message)
+        }
     }
 
     private fun startVoiceForReal() {

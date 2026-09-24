@@ -558,6 +558,36 @@ object OfflineBrain {
         // ---------- 0) pending conversation state ----------
         if (pending != null && handlePending(ctx, lang, low, r)) return r
 
+        // ---------- 0b) MODEL NAAM se seedha download ("Tiny Llama-1.1B", "smollm2 download karo", "qwen") ----------
+        run {
+            val norm = low.replace(Regex("[^a-z0-9]"), "")
+            val hit = ModelStore.presets.firstOrNull { p ->
+                val alias = when {
+                    p.name.startsWith("SmolLM") -> "smollm"
+                    p.name.startsWith("Qwen") -> "qwen"
+                    p.name.startsWith("TinyLlama") -> "tinyllama"
+                    else -> p.name.lowercase().replace(Regex("[^a-z0-9]"), "")
+                }
+                norm.contains(alias)
+            }
+            val dlWord = Regex("download|downlad|\\bdl\\b|\\blana\\b|\\blao\\b|chahiye|install").containsMatchIn(low)
+            val otherWord = Regex("connect|laga|\\buse\\b|select|delete|hata|remove|\\blist\\b").containsMatchIn(low)
+            if (hit != null && !otherWord && (dlWord || words.size <= 4)) {
+                val have = ModelStore.downloaded(ctx).contains(hit.file)
+                val need = Regex("\\d+").find(hit.size)?.value?.toLongOrNull() ?: 0L
+                val freeMb = try { android.os.StatFs(ModelStore.dir(ctx).path).availableBytes / 1048576 } catch (e: Exception) { Long.MAX_VALUE }
+                if (have) {
+                    r.text = "✅ ${hit.name} pehle se download hai. Connect ke liye likho: \"${hit.name} connect\""
+                } else if (freeMb < need * 13 / 10) {
+                    r.text = "❌ Storage kam hai — ${hit.name} ko ~${need}MB chahiye, khali sirf ${freeMb}MB hai. Jagah khali karo ya halka model (SmolLM2-135M) lo."
+                } else {
+                    r.text = "⬇️ ${hit.name} (${hit.size}) download shuru — neeche live progress bar dekho."
+                    r.actions.add(BrainAction("dlmodel", hit.name))
+                }
+                return r
+            }
+        }
+
         // ---------- 1) GREETING ----------
         val bare = low.replace(Regex("[^\\p{L}\\p{M} ]"), "").trim()
         val isGreet = bare in GREET_BARE || words.all { it.replace(Regex("[^\\p{L}\\p{M}]"), "") in GREET_BARE }
@@ -1056,7 +1086,7 @@ object OfflineBrain {
         }
 
         // ---------- 19) IDENTITY — kis ne banaya ----------
-        if (Regex("kis\\s*ne|who\\s*(?:made|created|built|developed)|developer|creator|malik|banaya|banaua|banaiya|किसने|बनाया|کس نے|بنایا").find(low) != null && Regex("banaya|banaua|made|created|built|developed|developer|creator|malik|बनाया|بنایا").find(low) != null) {
+        if (Regex("kis\\s*ne|who\\s*(?:made|created|built|build|developed|develop)|developer|creator|malik|banaya|banaua|banaiya|किसने|बनाया|کس نے|بنایا").find(low) != null && Regex("banaya|banaua|made|created|built|build|developed|developer|creator|malik|बनाया|بنایا").find(low) != null) {
             val personalQ = Regex("personal|private|family|biwi|wife|umar|age|address|phone\\s*number|number|kahan|where|reet|detail|salary|paisa|money").find(low) != null
             r.text = if (personalQ) "🤖 Mujhe Wishal Noor ne banaya hai — lekin unki personal details ke bare mein mujhe kuch pata nahi (na number, na address, na family). Ye main share nahi kar sakta."
             else "🤖 Mujhe Wishal Noor ne banaya hai. Main Auto Bot hoon — aap ka apna offline assistant."
@@ -1083,6 +1113,10 @@ object OfflineBrain {
             r.text = "📦 Transformer download!\n\n📱 Phone specs dekh kar mera suggestion: $sug — kyunke $why.\n\nOptions:\n• SmolLM2-135M (~145MB, sabse halka)\n• Qwen2.5-0.5B (~400MB, balanced)\n• TinyLlama-1.1B (~670MB, sabse smart)" +
                 (if (models.isNotEmpty()) "\n\n✅ Already downloaded: $have" else "") +
                 "\n\nDownload karun? Neeche button dabao ya naam bolo (e.g. \"smollm2 download karo\")."
+            try {
+                val fmb = android.os.StatFs(ModelStore.dir(ctx).path).availableBytes / 1048576
+                r.text += "\n💾 Free storage: " + (if (fmb >= 1024) "%.1f GB".format(fmb / 1024.0) else "$fmb MB")
+            } catch (_: Exception) {}
             r.buttons.add(BrainButton("⬇️ Download $sug", "dlmodel", sug))
             return r
         }

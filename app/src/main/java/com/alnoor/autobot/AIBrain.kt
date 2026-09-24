@@ -100,14 +100,14 @@ object AIBrain {
     private fun failReply(ctx: Context, question: String): String {
         val off = ctx.getSharedPreferences("autobot", Context.MODE_PRIVATE)
             .getString("brain_offline_model", null)
+        val hasAnyKey = KeyStore.load(ctx).isNotEmpty()
         val sb = StringBuilder()
-        sb.append("🧠 Is task ke liye AI jawab chahiye jo abhi available nahi hai — API key kaam nahi kar rahi ya uska credit khatam ho gaya hai.\n\n")
-        sb.append("Kya kar sakte ho:\n• ⚙️ Settings kholo (chat mein 'settings' likho) → API Keys tab → nayi ya working key add karo\n")
-        if (off != null) {
-            sb.append("• Ya Ollama offline model: aapka model ($off) already selected hai — Settings → Ollama tab.\n(⚠️ Mobile pe model ka ENGINE chalana agle version mein aayega — filhal AI task ke liye API key best rahegi.)")
-        } else {
-            sb.append("• Ya offline model download karo: chat mein 'transformer download' likho — main aapke phone ke specs ke hisaab se best model suggest karunga aur aapki approval se download karunga.\n(⚠️ Model ka ENGINE chalana agle version mein aayega — filhal AI task ke liye API key best rahegi.)")
-        }
+        sb.append(if (hasAnyKey) "🧠 AI se jawab nahi mil paya — key ka credit khatam / key ghalat ho sakti hai, ya internet band hai.\n\n"
+                  else "🧠 Is sawal ke liye AI chahiye, aur abhi koi API key connect nahi hai.\n\n")
+        sb.append("⚡ Sabse aasan fix — chat mein likho:\n   api key <apni-key>\n(Gemini / OpenAI / Groq / OpenRouter khud pehchan lunga; free Gemini key: aistudio.google.com/apikey)\n")
+        if (off != null) sb.append("\n📦 Offline model ($off) select hai, lekin abhi app mein model chalane wala engine nahi — filhal key best hai.")
+        else sb.append("\n📦 Offline model chahiye? Likho: transformer download (phone ke hisaab se suggest karunga).")
+        sb.append("\n\n✅ Tab tak local commands chalte hain: open youtube, call, contact, torch, volume… ('help' likho).")
         return sb.toString()
     }
 
