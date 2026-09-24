@@ -19,8 +19,8 @@ android {
         applicationId isLite ? "com.alnoor.autobot" : "com.alnoor.autobot.pro"
         minSdk 24
         targetSdk 34
-        versionCode 33
-        versionName isLite ? "3.2-LITE" : "3.2-PRO"
+        versionCode 34
+        versionName isLite ? "3.3-LITE" : "3.3-PRO"
         ndk { abiFilters 'arm64-v8a', 'armeabi-v7a' }
         resValue "string", "app_label", isLite ? "Auto Bot" : "Auto Bot Pro"
     }
