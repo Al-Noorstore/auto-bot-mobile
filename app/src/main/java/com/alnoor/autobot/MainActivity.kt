@@ -685,8 +685,17 @@ class MainActivity : AppCompatActivity() {
                     else -> null
                 }
                 if (provider == null) { chatReply("❓ Provider samajh nahi aaya. Likho: api key gemini <key>\nOptions: " + KeyStore.providers.joinToString(", ")); return }
+                // v3.5: model naam bhi message mein ho to pehchano ("api key gemini 2.5 flash AIza...")
+                val provPrefix = provider.lowercase().replace(" ", "")
+                val filler = Regex("^(key|apikey|api-key|add|karo|kro|krdo|kardo|please|hai|ye|this|is|wali|model|naam)$")
+                val modelWords = rest.filter { w -> w !== keyTok && w.length >= 2 && !w.lowercase().startsWith(provPrefix.split(" ")[0]) && !filler.containsMatchIn(w.lowercase()) }
+                val model = when {
+                    modelWords.any { it.contains("/") || (it.contains("-") && it.length > 6) } -> modelWords.first { it.contains("/") || (it.contains("-") && it.length > 6) }
+                    modelWords.isNotEmpty() -> provPrefix.split(" ")[0] + "-" + modelWords.joinToString("-") { it.lowercase() }
+                    else -> KeyStore.defaultModel(provider)
+                }
                 val label = provider.split(" ")[0] + "-" + keyTok.takeLast(4)
-                val k = KeyStore.ApiKey(provider, label, keyTok, KeyStore.defaultBase(provider), KeyStore.defaultModel(provider))
+                val k = KeyStore.ApiKey(provider, label, keyTok, KeyStore.defaultBase(provider), model)
                 // chat history mein poori key na rahe
                 runOnUiThread { try { webView.evaluateJavascript("window.__lastLocalMsg='api key " + provider + " ****" + keyTok.takeLast(4) + "'", null) } catch (_: Exception) {} }
                 chatReply(KeyStore.add(this, k) + "\n🔍 Test kar raha hoon...")
@@ -1773,12 +1782,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ---------- native powers ----------
-    private fun cleanPhone(): String {
-        var p = inputPhone.text.toString().trim().replace(Regex("[^+\\d]"), "")
-        if (p.startsWith("00")) p = "+" + p.substring(2)
-        if (p.length in 10..12 && !p.startsWith("+")) p = "+$p"
-        return p
-    }
+    private fun cleanPhone(): String = OfflineBrain.normalizePhone(inputPhone.text.toString())
 
     private fun validPhone(): Boolean {
         val p = cleanPhone()
