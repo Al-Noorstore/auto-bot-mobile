@@ -110,6 +110,65 @@ class AutoBotAccessibilityService : AccessibilityService() {
             return if (svc.performGlobalAction(GLOBAL_ACTION_HOME)) "OK" else "FAIL"
         }
 
+        // ---------- v4.2 parity: tap coordinates / long press / swipe / foreground app ----------
+        fun tapXY(x: Float, y: Float): String {
+            val svc = instance ?: return "OFF"
+            val p = android.graphics.Path()
+            p.moveTo(x, y)
+            val stroke = android.accessibilityservice.GestureDescription.StrokeDescription(p, 0, 50)
+            val ok = svc.dispatchGesture(
+                android.accessibilityservice.GestureDescription.Builder().addStroke(stroke).build(), null, null
+            )
+            return if (ok) "OK" else "FAIL"
+        }
+
+        fun longPressText(q: String): String {
+            val svc = instance ?: return "OFF"
+            val root = try { svc.rootInActiveWindow } catch (_: Exception) { null } ?: return "NO_WINDOW"
+            val target = findNode(root, q) ?: return "NOT_FOUND"
+            val r = android.graphics.Rect()
+            target.getBoundsInScreen(r)
+            val p = android.graphics.Path()
+            p.moveTo(r.centerX().toFloat(), r.centerY().toFloat())
+            val stroke = android.accessibilityservice.GestureDescription.StrokeDescription(p, 0, 600)
+            val ok = svc.dispatchGesture(
+                android.accessibilityservice.GestureDescription.Builder().addStroke(stroke).build(), null, null
+            )
+            return if (ok) "OK" else "FAIL"
+        }
+
+        fun swipeHorizontal(left: Boolean): String {
+            val svc = instance ?: return "OFF"
+            val w = svc.resources.displayMetrics
+            val cy = w.heightPixels / 2f
+            val x1 = if (left) w.widthPixels * 0.8f else w.widthPixels * 0.2f
+            val x2 = if (left) w.widthPixels * 0.2f else w.widthPixels * 0.8f
+            val p = android.graphics.Path()
+            p.moveTo(x1, cy)
+            p.lineTo(x2, cy)
+            val stroke = android.accessibilityservice.GestureDescription.StrokeDescription(p, 0, 250)
+            val ok = svc.dispatchGesture(
+                android.accessibilityservice.GestureDescription.Builder().addStroke(stroke).build(), null, null
+            )
+            return if (ok) "OK" else "FAIL"
+        }
+
+        fun foregroundPackage(): String {
+            val svc = instance ?: return ""
+            val root = try { svc.rootInActiveWindow } catch (_: Exception) { null } ?: return ""
+            return root.packageName?.toString() ?: ""
+        }
+
+        fun recents(): String {
+            val svc = instance ?: return "OFF"
+            return if (svc.performGlobalAction(GLOBAL_ACTION_RECENTS)) "OK" else "FAIL"
+        }
+
+        fun notifications(): String {
+            val svc = instance ?: return "OFF"
+            return if (svc.performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)) "OK" else "FAIL"
+        }
+
         private fun collect(n: AccessibilityNodeInfo, out: StringBuilder, depth: Int) {
             if (depth > 25) return
             n.text?.let { t -> val s = t.toString().trim(); if (s.isNotEmpty()) { if (out.isNotEmpty()) out.append('\n'); out.append(s) } }

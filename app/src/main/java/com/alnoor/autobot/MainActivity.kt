@@ -2173,6 +2173,50 @@ ipa download
             chatReply(if (AutoBotAccessibilityService.goHome() == "OK") "🏠 Home." else "❌ Home fail.")
             return true
         }
+
+        // ---------- v4.2 parity: recents / notifications / swipe / tap xy / longpress / foreground app ----------
+        if (low == "recents" || low.contains("recent apps")) {
+            if (!AutoBotAccessibilityService.isOn()) { chatReply(accSteps); return true }
+            chatReply(if (AutoBotAccessibilityService.recents() == "OK") "🗂 Recents" else "❌ Fail")
+            return true
+        }
+        if (low == "notifications" || low.contains("notification khol") || low == "notification panel") {
+            if (!AutoBotAccessibilityService.isOn()) { chatReply(accSteps); return true }
+            chatReply(if (AutoBotAccessibilityService.notifications() == "OK") "🔔 Notification panel" else "❌ Fail")
+            return true
+        }
+        if (low.startsWith("tap xy ") || low.startsWith("click xy ")) {
+            if (!AutoBotAccessibilityService.isOn()) { chatReply(accSteps); return true }
+            val parts = low.substringAfter("xy ").trim().split(Regex("\\s+"))
+            if (parts.size < 2) { chatReply("Usage: tap xy 500 800"); return true }
+            val x = parts[0].toFloatOrNull(); val y = parts[1].toFloatOrNull()
+            if (x == null || y == null) { chatReply("❌ Numbers chahiye: tap xy 500 800"); return true }
+            chatReply(if (AutoBotAccessibilityService.tapXY(x, y) == "OK") "👆 Tap ($x,$y)" else "❌ Tap fail")
+            return true
+        }
+        if (low.contains("swipe left") || low == "left swipe") {
+            if (!AutoBotAccessibilityService.isOn()) { chatReply(accSteps); return true }
+            chatReply(if (AutoBotAccessibilityService.swipeHorizontal(true) == "OK") "👈 Swipe left" else "❌ Fail")
+            return true
+        }
+        if (low.contains("swipe right") || low == "right swipe") {
+            if (!AutoBotAccessibilityService.isOn()) { chatReply(accSteps); return true }
+            chatReply(if (AutoBotAccessibilityService.swipeHorizontal(false) == "OK") "👉 Swipe right" else "❌ Fail")
+            return true
+        }
+        if (low.startsWith("longpress ") || low.startsWith("long press ")) {
+            if (!AutoBotAccessibilityService.isOn()) { chatReply(accSteps); return true }
+            val q = low.substringAfter("press ").trim().ifBlank { low.substringAfter("longpress ").trim() }
+            val res = AutoBotAccessibilityService.longPressText(q)
+            chatReply(if (res == "OK") "👆 Long press: $q" else "❌ Long press fail: $res")
+            return true
+        }
+        if (low == "screen info" || low == "kaunsi app" || low == "which app") {
+            if (!AutoBotAccessibilityService.isOn()) { chatReply(accSteps); return true }
+            val pkg = AutoBotAccessibilityService.foregroundPackage()
+            chatReply("📱 Foreground: ${pkg.ifBlank { "unknown" }}")
+            return true
+        }
         // ---------- v3.4: chrome mein direct kholo ----------
         val chromeM = Regex("^\\s*chrome\\s+(.+?)\\s*(?:kholo|khol|karo|kro|do)*\\s*$").find(low)?.groupValues?.get(1)
         if (chromeM != null) {
