@@ -1,5 +1,16 @@
 # Auto Bot Mobile (Native Android App)
 
+## v3.6 — Dual-SIM + WhatsApp calls + App Lock (GGUF wale features ka port, engine ke bina)
+
+- 📱 **SIM Dialer page** (menu bar) — default call SIM choose karo: SIM 1 / SIM 2 / har baar poochho
+- 🧠 **SIM ka order:** chat mein bola ("call Amir sim 2") > contact ki aadat (bot note karta hai) > default setting
+- 🔊 **Speaker se poochta hai** — dual-SIM par bot bolta hai "kaun si SIM se call karni hai?" (chat buttons / mic / text: sim 1, sim 2, cancel)
+- 📊 **Aadat note + default suggestion** — zyada-tar jis SIM se calls, bot offer karta hai "SIM 2 default banaun?" (user approval se)
+- 💾 **Pehla save → SIM sawal** — first contact save par: call kis SIM se karni hogi?
+- ✅ **Exact naam match** — "Rizwan Bai ko call" sirf Rizwan Bai ko; "amir" akele → sab Amir list (naam+number); "bai" likho → sab Bai wale
+- 💬 **WhatsApp calls** — "wa call Amir" (voice) / "wa video Amir" (video) / "X ko whatsapp pr call karo" — data/Wi-Fi se
+- 🔓 **App Lock auto-unlock** — "app lock ka password <pw>" save karo; Accessibility ON to bot khud type kar ke lock khol dega
+
 **DO versions hain** (dono Actions se build hoti hain, "Build APK" ke Artifacts mein):
 
 | | AutoBot LITE (default) | AutoBot PRO |
