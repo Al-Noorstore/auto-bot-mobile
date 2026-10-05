@@ -42,6 +42,26 @@ class AutoBotAccessibilityService : AccessibilityService() {
         }
 
         /** screen par text/desc se node dhoondo aur click karo */
+        // ---------- v3.6/v3.7: password/text auto-type (app lock unlock) ----------
+        fun typeText(text: String): String {
+            val svc = instance ?: return "OFF"
+            val root = try { svc.rootInActiveWindow } catch (_: Exception) { null } ?: return "NO_WINDOW"
+            val edit = findEditable(root) ?: return "NO_EDIT"
+            val args = android.os.Bundle()
+            args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+            return if (edit.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) "OK" else "FAIL"
+        }
+
+        private fun findEditable(n: AccessibilityNodeInfo, depth: Int = 0): AccessibilityNodeInfo? {
+            if (depth > 25) return null
+            if (n.isEditable || n.className?.toString()?.contains("EditText") == true) return n
+            for (i in 0 until n.childCount) {
+                val c = try { n.getChild(i) } catch (_: Exception) { null } ?: continue
+                findEditable(c, depth + 1)?.let { return it }
+            }
+            return null
+        }
+
         fun tapText(q: String): String {
             val svc = instance ?: return "OFF"
             val root = try { svc.rootInActiveWindow } catch (e: Exception) { null } ?: return "NO_WINDOW"
