@@ -1280,6 +1280,860 @@ class MainActivity : AppCompatActivity() {
             } else chatReply("⚠️ Screen par password box nahi mila. Pehle wo app kholo jis ka lock hai, phir 'unlock karo' bolo.")
             return true
         }
+        // ============================== v3.7: POWERS (GitHub / Terminal deps / Clients CRM / Images / Projects) ==============================
+
+        if (low == "contacts" || low == "contact list" || low == "phonebook" || low.startsWith("contacts ")) {
+            val q = if (low.startsWith("contacts ")) msg.substringAfter(" ").trim() else ""
+            if (!Phonebook.hasPermission(this)) {
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.READ_CONTACTS), REQ_CONTACTS)
+                chatReply("📇 Contacts permission maangi — Allow ke baad dobara 'contacts' likho.")
+            } else chatReply(Phonebook.listText(this, q.ifBlank { null }))
+            return true
+        }
+        if (low.startsWith("mera number ") || low.startsWith("my number ") || low.startsWith("remember my number ")) {
+            val n = msg.substringAfter("number ").trim()
+            if (n.length < 8) chatReply("📞 Number do: mera number +923001234567")
+            else {
+                MemoryVault.setMyNumber(this, n)
+                chatReply("✅ Mera number yaad: ${MemoryVault.myNumber(this)}\nRoz report isi pe WhatsApp se ja sakti hai.")
+            }
+            return true
+        }
+        if (low == "mera number" || low == "my number") {
+            val n = MemoryVault.myNumber(this)
+            chatReply(if (n.isNullOrBlank()) "📞 Abhi save nahi. Likho: mera number +92..." else "📞 Mera number: $n")
+            return true
+        }
+
+        if (low.startsWith("client add ") || low.startsWith("lead add ") || low.startsWith("supplier add ")) {
+            val isSupplier = low.startsWith("supplier add ")
+            val body = msg.substringAfter("add ").trim()
+            val parts = body.split("|").map { it.trim() }.filter { it.isNotEmpty() }
+            if (parts.isEmpty()) {
+                chatReply("Usage:\nclient add Ali | phone +92... | email a@b.com | country PK | niche fashion\nsupplier add FactoryCo | phone +86... | country CN | niche kitchen")
+                return true
+            }
+            var name = parts[0]; var phone = ""; var email = ""; var country = ""; var niche = ""; var interest = ""; var profile = ""; var source = "manual"; var notes = ""; var role = if (isSupplier) "supplier" else "client"
+            for (p in parts) {
+                val pl = p.lowercase()
+                when {
+                    pl.startsWith("phone ") || pl.startsWith("number ") -> phone = p.substringAfter(" ").trim()
+                    pl.startsWith("email ") || pl.startsWith("mail ") -> email = p.substringAfter(" ").trim()
+                    pl.startsWith("country ") -> country = p.substringAfter(" ").trim()
+                    pl.startsWith("niche ") -> niche = p.substringAfter(" ").trim()
+                    pl.startsWith("interest ") || pl.startsWith("buy ") -> interest = p.substringAfter(" ").trim()
+                    pl.startsWith("profile ") || pl.startsWith("link ") -> profile = p.substringAfter(" ").trim()
+                    pl.startsWith("source ") -> source = p.substringAfter(" ").trim()
+                    pl.startsWith("note ") || pl.startsWith("notes ") -> notes = p.substringAfter(" ").trim()
+                    pl.startsWith("role ") -> role = p.substringAfter(" ").trim().lowercase().ifBlank { role }
+                    p == parts[0] -> name = p
+                }
+            }
+            val pid = ProjectStore.activeId(this) ?: ""
+            val dup = MemoryVault.findDuplicates(this, name, phone, pid)
+            val c = MemoryVault.Client(name, phone, email, profile, country, niche, interest, source, notes, role, pid)
+            if (dup.byName != null || dup.byPhone != null) {
+                val d = dup.byName ?: dup.byPhone!!
+                val why = buildString {
+                    if (dup.byName != null) append("same name \"${dup.byName!!.name}\"")
+                    if (dup.byPhone != null) {
+                        if (isNotEmpty()) append(" + ")
+                        append("same number ${dup.byPhone!!.phone}")
+                    }
+                }
+                val json = org.json.JSONObject()
+                    .put("name", c.name).put("phone", c.phone).put("email", c.email)
+                    .put("profile", c.profile).put("country", c.country).put("niche", c.niche)
+                    .put("interest", c.interest).put("source", c.source).put("notes", c.notes)
+                    .put("role", c.role).put("projectId", c.projectId).toString()
+                MemoryVault.setPendingDup(this, json)
+                chatReply("⚠️ Duplicate lagta hai ($why).\nPurana: ${d.name} | ${d.phone} | ${d.role}\nNaya save / overwrite? Likho: *haan* ya *nahi*")
+                return true
+            }
+            MemoryVault.addClient(this, c)
+            chatReply("✅ ${c.role} save: ${c.name}\n📞 ${c.phone.ifBlank { "—" }}\nProject: ${if (pid.isEmpty()) "global" else "active"}")
+            return true
+        }
+        if (low == "haan" || low == "han" || low == "yes" || low == "confirm") {
+            val raw = MemoryVault.getPendingDup(this)
+            if (raw != null) {
+                try {
+                    val o = org.json.JSONObject(raw)
+                    val c = MemoryVault.Client(
+                        o.optString("name"), o.optString("phone"), o.optString("email"),
+                        o.optString("profile"), o.optString("country"), o.optString("niche"),
+                        o.optString("interest"), o.optString("source"), o.optString("notes"),
+                        o.optString("role", "client"), o.optString("projectId")
+                    )
+                    MemoryVault.addClient(this, c, force = true)
+                    MemoryVault.clearPendingDup(this)
+                    chatReply("✅ Overwrite save: ${c.name} (${c.role})")
+                } catch (e: Exception) { chatReply("❌ Confirm fail: ${e.message}") }
+                return true
+            }
+        }
+        if (low == "nahi" || low == "no" || low == "cancel") {
+            if (MemoryVault.getPendingDup(this) != null) {
+                MemoryVault.clearPendingDup(this)
+                chatReply("❎ Duplicate save cancel.")
+                return true
+            }
+        }
+
+        if (low == "clients" || low == "client list" || low == "leads") {
+            chatReply(MemoryVault.clientsReport(this) + "\n\n💡 Fields: client phone Name | +92...\nclient email Name | a@b.com\nclient link Name | https://...\nclient country Name | PK\nclient niche Name | fashion\nclient interest Name | Amazon bags")
+            return true
+        }
+        // client <field> Name | value
+        val clientField = Regex("^client\\s+(phone|number|email|mail|link|profile|post|country|niche|interest|note|notes)\\s+(.+)$", RegexOption.IGNORE_CASE).find(msg.trim())
+        if (clientField != null) {
+            val field = clientField.groupValues[1].lowercase()
+            val rest = clientField.groupValues[2]
+            val parts = rest.split("|", limit = 2).map { it.trim() }
+            if (parts.size < 2) {
+                chatReply("Usage: client $field Ali | value")
+                return true
+            }
+            val name = parts[0]
+            val value = parts[1]
+            val existing = MemoryVault.clients(this).firstOrNull { it.name.equals(name, true) }
+            val base = existing ?: MemoryVault.Client(name = name)
+            val updated = when (field) {
+                "phone", "number" -> base.copy(phone = value, updated = System.currentTimeMillis())
+                "email", "mail" -> base.copy(email = value, updated = System.currentTimeMillis())
+                "link", "profile", "post" -> base.copy(profile = value, updated = System.currentTimeMillis())
+                "country" -> base.copy(country = value, updated = System.currentTimeMillis())
+                "niche" -> base.copy(niche = value, updated = System.currentTimeMillis())
+                "interest" -> base.copy(interest = value, updated = System.currentTimeMillis())
+                "note", "notes" -> base.copy(notes = value, updated = System.currentTimeMillis())
+                else -> base
+            }
+            MemoryVault.addClient(this, updated)
+            chatReply("✅ ${updated.name}\n📞 ${updated.phone.ifBlank { "—" }}\n📧 ${updated.email.ifBlank { "—" }}\n🔗 ${updated.profile.ifBlank { "—" }}\n🌍 ${updated.country.ifBlank { "—" }}\n🏷 ${updated.niche.ifBlank { "—" }}\n🛒 ${updated.interest.ifBlank { "—" }}")
+            return true
+        }
+
+        if (low.startsWith("client search ") || low.startsWith("find client ") || low.startsWith("research ")) {
+            val rest = msg.substringAfter(" ").trim().let {
+                when {
+                    low.startsWith("client search ") -> msg.substringAfter("search ").trim()
+                    low.startsWith("find client ") -> msg.substringAfter("client ").trim()
+                    else -> msg.substringAfter("research ").trim()
+                }
+            }
+            val bits = rest.split(Regex("\\s+"), limit = 2)
+            val q = bits.getOrNull(0) ?: rest
+            val niche = bits.getOrNull(1) ?: ""
+            chatReply(ClientFinder.researchGuide(q, niche))
+            runOnUiThread {
+                showBrowser(true)
+                ClientFinder.searchUrls(q, niche).take(4).forEach { (_, url) -> webNewTab(url) }
+            }
+            return true
+        }
+
+
+        if (low.startsWith("image generate ") || low.startsWith("generate image ") || low.startsWith("img gen ")) {
+            val prompt = when {
+                low.startsWith("image generate ") -> msg.substringAfter("generate ").trim()
+                low.startsWith("generate image ") -> msg.substringAfter("image ").trim()
+                else -> msg.substringAfter("gen ").trim()
+            }
+            chatReply("🎨 Image bana raha hoon...")
+            Thread {
+                val path = ImageBrain.generate(this, prompt)
+                runOnUiThread {
+                    if (path.startsWith("❌")) chatReply(path)
+                    else chatReply("✅ Image save:\n$path\n💡 wa image  — WhatsApp pe bhejo\n💡 image padho — AI se padho")
+                }
+            }.start()
+            return true
+        }
+        if (low.startsWith("image padho") || low.startsWith("image read") || low.startsWith("read image") || low.startsWith("vision ")) {
+            val rest = when {
+                low.startsWith("vision ") -> msg.substringAfter("vision ").trim()
+                low.startsWith("image padho") -> msg.substringAfter("padho").trim().removePrefix(" ").trim()
+                low.startsWith("image read") -> msg.substringAfter("read").trim().removePrefix(" ").trim()
+                else -> msg.substringAfter("image").trim()
+            }
+            val pathPart: String
+            val question: String
+            if (rest.contains("|")) {
+                val p = rest.split("|", limit = 2)
+                pathPart = p[0].trim()
+                question = p[1].trim().ifBlank { "Is image mein kya hai?" }
+            } else {
+                pathPart = rest
+                question = "Is image / screenshot mein kya likha aur dikh raha hai? Detail mein batao."
+            }
+            val file = when {
+                pathPart.isNotBlank() && java.io.File(pathPart).isFile -> java.io.File(pathPart)
+                else -> ImageBrain.lastGenerated(this)
+            }
+            if (file == null) {
+                chatReply("❌ Image path do ya pehle generate karo.\nimage padho /sdcard/.../pic.jpg | ye kya hai?")
+                return true
+            }
+            chatReply("👁 Image padh raha hoon...")
+            Thread {
+                val ans = ImageBrain.readImage(this, file.absolutePath, question)
+                runOnUiThread { chatReply(ans) }
+            }.start()
+            return true
+        }
+
+        if (low == "wa image" || low.startsWith("wa image ") || low.startsWith("whatsapp image ") || low.startsWith("send image ")) {
+            val rest = when {
+                low == "wa image" -> ""
+                low.startsWith("wa image ") -> msg.substringAfter("image ").trim()
+                low.startsWith("whatsapp image ") -> msg.substringAfter("image ").trim()
+                else -> msg.substringAfter("image ").trim()
+            }
+            val path = if (rest.isNotBlank() && java.io.File(rest).isFile) rest
+            else ImageBrain.lastGenerated(this)?.absolutePath
+            if (path == null) {
+                chatReply("❌ Pehle image generate karo ya path do:\nwa image /path/to.jpg")
+                return true
+            }
+            runOnUiThread { chatReply(shareImageWhatsApp(path)) }
+            return true
+        }
+        if (low == "last image" || low == "image last") {
+            val f = ImageBrain.lastGenerated(this)
+            chatReply(if (f != null) "🖼 ${f.absolutePath}" else "❌ Koi generated image nahi")
+            return true
+        }
+
+
+
+        if (low.contains("roz") && (low.contains("client") || low.contains("report")) && (low.contains("whatsapp") || low.contains("wa ") || low.contains("number"))) {
+            // Roz mujhe mere number par client info WhatsApp
+            val my = MemoryVault.myNumber(this)
+            if (my.isNullOrBlank()) {
+                chatReply("📞 Pehle apna number save karo:\nmera number +923001234567\nPhir dobara bolo: roz client report WhatsApp")
+                return true
+            }
+            MemoryVault.setDailyReport(this, true, 9, 0)
+            AlarmEngine.schedule(this, 9, 0, true, "AUTO_CLIENT_REPORT")
+            chatReply("✅ Roz 9:00 AM client report WhatsApp pe ($my) open hogi.\nClients: ${MemoryVault.clients(this).size}\nBand: daily report off")
+            return true
+        }
+        if (low == "daily report off" || low == "roz report band") {
+            MemoryVault.setDailyReport(this, false)
+            chatReply("⏹ Daily WhatsApp client report OFF")
+            return true
+        }
+        if (low == "daily report on" || low == "roz report on") {
+            val my = MemoryVault.myNumber(this)
+            if (my.isNullOrBlank()) { chatReply("Pehle: mera number +92..."); return true }
+            MemoryVault.setDailyReport(this, true, 9, 0)
+            AlarmEngine.schedule(this, 9, 0, true, "AUTO_CLIENT_REPORT")
+            chatReply("✅ Daily report ON — 9 AM WhatsApp ($my)")
+            return true
+        }
+        if (low == "daily report now" || low == "client report ab") {
+            val msg = MemoryVault.buildDailyMessage(this)
+            val my = MemoryVault.myNumber(this)
+            if (!my.isNullOrBlank()) {
+                try {
+                    val url = "https://wa.me/" + my.filter { it.isDigit() } + "?text=" + java.net.URLEncoder.encode(msg.take(3500), "UTF-8")
+                    runOnUiThread { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                    chatReply("📤 Report WhatsApp pe khuli — Send dabao.")
+                } catch (e: Exception) { chatReply(msg) }
+            } else chatReply(msg + "\n\n💡 mera number +92... save karo taake seedha WA khule.")
+            return true
+        }
+        // Message / call saved client or supplier
+
+        if (low.startsWith("message client ") || low.startsWith("message supplier ") ||
+            low.startsWith("msg client ") || low.startsWith("msg supplier ") ||
+            low.startsWith("client message ") || low.startsWith("supplier message ")) {
+            val toSupplier = low.contains("supplier")
+            val rest = msg.substringAfter(" ").substringAfter(" ").trim()
+            val parts = rest.split("|", limit = 2).map { it.trim() }
+            if (parts.size < 2) {
+                chatReply("Usage: message client Ali | Hello\nmessage supplier Factory | Need quote")
+                return true
+            }
+            val pid = ProjectStore.activeId(this)
+            val hits = MemoryVault.findByName(this, parts[0], pid).filter {
+                if (toSupplier) it.role == "supplier" else it.role != "supplier" || true
+            }
+            val target = hits.firstOrNull() ?: MemoryVault.findByName(this, parts[0]).firstOrNull()
+            if (target == null) chatReply("❌ '${parts[0]}' save nahi. Pehle client/supplier add karo.")
+            else if (target.phone.isBlank()) chatReply("❌ ${target.name} ka number nahi. client phone ${target.name} | +92...")
+            else waMessageToPerson(target.phone, parts[1])
+            return true
+        }
+
+        if (low.startsWith("remember ") || low.startsWith("yaad ") || low.startsWith("project memory ")) {
+            val rest = when {
+                low.startsWith("project memory ") -> msg.substringAfter("memory ").trim()
+                low.startsWith("yaad ") -> msg.substringAfter("yaad ").trim()
+                else -> msg.substringAfter("remember ").trim()
+            }
+            if (rest.contains("|")) {
+                val (k, v) = rest.split("|", limit = 2).map { it.trim() }
+                if (ProjectStore.active(this) == null) chatReply("❌ Pehle: project open myapp")
+                else {
+                    ProjectStore.memorySet(this, k, v)
+                    chatReply("🧠 Yaad (sirf is project): $k = $v")
+                }
+            } else {
+                chatReply(ProjectStore.memoryAll(this) + "\n💡 remember key | value")
+            }
+            return true
+        }
+        if (low == "project memory" || low == "memory") {
+            chatReply(ProjectStore.memoryAll(this)); return true
+        }
+        // Coding / files inside active project only
+
+        if (low == "project list" || low == "projects" || low == "project status") {
+            chatReply(ProjectStore.status(this)); return true
+        }
+        if (low.startsWith("project new ") || low.startsWith("project create ")) {
+            val name = msg.substringAfter(" ").substringAfter(" ").trim()
+            if (name.isBlank()) { chatReply("📁 Naam do: project new myapp"); return true }
+            val p = ProjectStore.create(this, name)
+            currentProject = File(p.path)
+            chatReply("📁 Project '${p.name}' ready + active\n${p.path}\nTerminal/py isi folder mein chalega.")
+            return true
+        }
+        if (low.startsWith("project open ") || low.startsWith("project switch ")) {
+            val q = msg.substringAfter(" ").substringAfter(" ").trim()
+            val p = ProjectStore.open(this, q)
+            if (p == null) chatReply("❌ Project nahi mila. 'project list'")
+            else {
+                currentProject = File(p.path)
+                chatReply("👉 Active project: ${p.name}\n${p.path}")
+            }
+            return true
+        }
+        if (low.startsWith("project note ")) {
+            val note = msg.substringAfter("note ").trim()
+            if (ProjectStore.note(this, note)) chatReply("📝 Note save (active project)")
+            else chatReply("❌ Pehle 'project open' karo")
+            return true
+        }
+        // In-app browser tabs
+
+        // ---------- v3.9.5: project → GitHub push / APK / AAB (active project only) ----------
+        if (low == "github push" || low.startsWith("github push ") || low == "only push" || low == "sirf push") {
+            val token = TokenVault.get(this, "github")
+            if (token == null) { chatReply("🔑 token save github ghp_xxxx (repo + workflow)"); return true }
+            if (low.startsWith("github push zip") || low.startsWith("push zip")) { /* handled below */ }
+            else {
+                val dir = GitHubSync.activeProjectDir(this) ?: if (currentProject.exists()) currentProject else null
+                if (dir == null) { chatReply("❌ project open <name> pehle"); return true }
+                val repoName = GitHubSync.safeRepoName(
+                    low.removePrefix("github push").trim().ifBlank { dir.name }.split(" ").first()
+                )
+                chatReply("📤 Sirf push — project: ${dir.name} → $repoName")
+                Thread {
+                    val (ok, full) = GitHubSync.ensureRepo(token, repoName, true)
+                    if (!ok) { runOnUiThread { chatReply(full) }; return@Thread }
+                    val pr = GitHubSync.pushFolder(token, full, dir)
+                    if (pr.fail > 0) GitHubSync.setPendingError(this, pr.message)
+                    runOnUiThread {
+                        chatReply(pr.message + if (pr.fail > 0) "\n\n⚠️ Errors hain. Fix chahiye? *haan fix* / *nahi*" else "")
+                    }
+                }.start()
+                return true
+            }
+        }
+
+
+
+
+
+        if (low == "fastlane" || low == "fastlane help" || low == "fastlane setup") {
+            chatReply("""🚀 *Fastlane automation (GitHub Actions)*
+
+*Setup files bot push karega:*
+• Gemfile
+• fastlane/Fastfile
+• fastlane/Appfile
+• .github/workflows/fastlane-ios.yml ya fastlane-android.yml
+
+*Commands*
+```
+fastlane ios     — iOS Fastlane + build
+fastlane android — Android Fastlane + APK
+fastlane setup ios
+fastlane setup android
+```
+
+*GitHub Secrets (optional)*
+iOS: IOS_CERTIFICATE_BASE64, IOS_CERTIFICATE_PASSWORD, IOS_PROVISION_PROFILE_BASE64, IOS_TEAM_ID
+iOS TestFlight: APP_STORE_CONNECT_API_KEY_ID, APP_STORE_CONNECT_API_ISSUER_ID
+Android Play: PLAY_STORE_JSON_KEY (service account JSON)
+
+*Flow*
+project open myapp → token save github ghp_… → fastlane ios / fastlane android
+""")
+            return true
+        }
+        if (low == "fastlane ios" || low == "fastlane setup ios" || low.startsWith("fastlane ios") ||
+            low == "fastlane android" || low == "fastlane setup android" || low.startsWith("fastlane android")) {
+            val token = TokenVault.get(this, "github")
+            if (token == null) { chatReply("🔑 token save github ghp_xxxx (repo + workflow)"); return true }
+            val dir = GitHubSync.activeProjectDir(this) ?: if (currentProject.exists()) currentProject else null
+            if (dir == null) { chatReply("❌ project open <name>"); return true }
+            val platform = if (low.contains("ios")) "ios" else "android"
+            val repoName = GitHubSync.safeRepoName(dir.name)
+            chatReply("🚀 Fastlane ($platform) — project ${dir.name} → GitHub...")
+            Thread {
+                val (ok, full) = GitHubSync.ensureRepo(token, repoName, true)
+                if (!ok) { runOnUiThread { chatReply(full) }; return@Thread }
+                val pr = GitHubSync.pushFolder(token, full, dir)
+                val fl = GitHubSync.ensureFastlane(token, full, platform)
+                val tr = GitHubSync.triggerFastlane(token, full, platform)
+                ProjectStore.setLastTask(this, "fastlane:$platform:$full")
+                runOnUiThread {
+                    chatReply("${pr.message}\n\n$fl\n\n$tr\n\n⏳ Actions: https://github.com/$full/actions\nDownload: apk download / ipa download")
+                }
+            }.start()
+            return true
+        }
+
+
+        if (low == "ios signing" || low == "ios certificate" || low == "apple signing" ||
+            low == "ipa signing" || low.contains("signing setup") || low == "ios help") {
+            chatReply("""🍎 *iOS / Apple signing setup*
+
+*1. Apple Developer (developer.apple.com)*
+• Membership active
+• Certificates → create *Apple Distribution* (or Development) → download .cer → Keychain → export *Login* cert as .p12
+• Profiles → App Store / Ad Hoc → select App ID + cert → download .mobileprovision
+
+*2. Base64 (Mac Terminal)*
+```
+base64 -i Certificates.p12 | pbcopy
+base64 -i profile.mobileprovision | pbcopy
+```
+
+*3. GitHub repo → Settings → Secrets → Actions* — add:
+• `IOS_CERTIFICATE_BASE64` = p12 base64
+• `IOS_CERTIFICATE_PASSWORD` = p12 password
+• `IOS_PROVISION_PROFILE_BASE64` = mobileprovision base64
+• `IOS_TEAM_ID` = Team ID (optional)
+• `IOS_KEYCHAIN_PASSWORD` = any temp password (optional)
+
+*4. Auto Bot*
+```
+project open myios
+token save github ghp_...
+ipa banao
+ipa download
+```
+
+⚠️ Secrets ke baghair: unsigned IPA / build-only (device install limited).
+✅ Secrets ke sath: signed IPA (Ad Hoc / distribution profile ke mutabiq).
+""")
+            return true
+        }
+
+
+        if (low == "ipa banao" || low == "ios banao" || low == "iphone app banao" ||
+            low.startsWith("ipa banao ") || low.startsWith("ios banao ") ||
+            low.contains("project ka ipa") || low.contains("iphone app") ||
+            low.startsWith("github ipa") || low.startsWith("github ios")) {
+            val token = TokenVault.get(this, "github")
+            if (token == null) { chatReply("🔑 token save github ghp_xxxx (repo + workflow)"); return true }
+            val dir = GitHubSync.activeProjectDir(this) ?: if (currentProject.exists()) currentProject else null
+            if (dir == null) { chatReply("❌ Active project: project open <name>"); return true }
+            val repoName = GitHubSync.safeRepoName(dir.name)
+            chatReply("🍎 Project: ${dir.absolutePath}\n→ GitHub + iOS IPA (macOS Actions)...\n(Xcode / Flutter / React Native)\nSigning: GitHub Secrets (IOS_CERTIFICATE_*) — detail: ios signing")
+            Thread {
+                val (ok, full) = GitHubSync.ensureRepo(token, repoName, true)
+                if (!ok) { runOnUiThread { chatReply(full) }; return@Thread }
+                val pr = GitHubSync.pushFolder(token, full, dir)
+                if (pr.fail > 0) {
+                    GitHubSync.setPendingError(this, pr.message)
+                    runOnUiThread { chatReply(pr.message + "\n\n⛔ *haan fix* ya *build phir bhi*") }
+                    return@Thread
+                }
+                val wf = GitHubSync.ensureIosWorkflow(token, full)
+                val tr = GitHubSync.triggerIosWorkflow(token, full)
+                ProjectStore.setLastTask(this, "github-ios:$full")
+                runOnUiThread {
+                    chatReply("${pr.message}\n$wf\n$tr\n\n⏳ 10–25 min baad:\n• ipa download\nActions: https://github.com/$full/actions")
+                }
+            }.start()
+            return true
+        }
+
+
+        if (low == "exe banao" || low == "exe bana" || low.startsWith("exe banao ") ||
+            low.contains("project ka exe") || low == "mere project ka exe banao" ||
+            low.startsWith("github exe") || low.contains("windows exe")) {
+            val token = TokenVault.get(this, "github")
+            if (token == null) { chatReply("🔑 token save github ghp_xxxx (repo + workflow)"); return true }
+            val dir = GitHubSync.activeProjectDir(this) ?: if (currentProject.exists()) currentProject else null
+            if (dir == null) { chatReply("❌ Active project: project open <name>"); return true }
+            val repoName = GitHubSync.safeRepoName(dir.name)
+            chatReply("💻 Project: ${dir.absolutePath}\n→ GitHub + Windows EXE Actions build...\n(Electron / .NET / Python / Go)")
+            Thread {
+                val (ok, full) = GitHubSync.ensureRepo(token, repoName, true)
+                if (!ok) { runOnUiThread { chatReply(full) }; return@Thread }
+                val pr = GitHubSync.pushFolder(token, full, dir)
+                if (pr.fail > 0) {
+                    GitHubSync.setPendingError(this, pr.message)
+                    runOnUiThread {
+                        chatReply(pr.message + "\n\n⛔ Errors. *haan fix*  ya  *build phir bhi*")
+                    }
+                    return@Thread
+                }
+                val wf = GitHubSync.ensureWindowsWorkflow(token, full)
+                val tr = GitHubSync.triggerWindowsWorkflow(token, full)
+                ProjectStore.setLastTask(this, "github-exe:$full")
+                runOnUiThread {
+                    chatReply("${pr.message}\n$wf\n$tr\n\n⏳ 5–20 min baad:\n• exe download\nActions: https://github.com/$full/actions")
+                }
+            }.start()
+            return true
+        }
+
+
+        if (low == "apk banao" || low == "apk bana" || low.startsWith("apk banao ") ||
+            low.contains("project ka apk") || low == "mere project ka apk banao" ||
+            low.startsWith("github apk") || low == "aab banao" || low.startsWith("aab banao") ||
+            low.contains("project ka aab") || low.startsWith("github aab")) {
+            val token = TokenVault.get(this, "github")
+            if (token == null) { chatReply("🔑 token save github ghp_xxxx (repo + workflow)"); return true }
+            val dir = GitHubSync.activeProjectDir(this) ?: if (currentProject.exists()) currentProject else null
+            if (dir == null) { chatReply("❌ Active project: project open <name>"); return true }
+            val wantAab = low.contains("aab")
+            val wantExe = low.contains("exe")
+            val wantIpa = low.contains("ipa") || low.contains("ios")
+            val repoName = GitHubSync.safeRepoName(dir.name)
+            chatReply("🐙 Project: ${dir.absolutePath}\n→ GitHub + ${if (wantAab) "AAB" else "APK"} build...")
+            Thread {
+                val (ok, full) = GitHubSync.ensureRepo(token, repoName, true)
+                if (!ok) { runOnUiThread { chatReply(full) }; return@Thread }
+                val pr = GitHubSync.pushFolder(token, full, dir)
+                if (pr.fail > 0) {
+                    GitHubSync.setPendingError(this, pr.message)
+                    runOnUiThread {
+                        chatReply(pr.message + "\n\n⛔ Build se pehle errors fix? *haan fix*  ya  phir bhi build: *build phir bhi*")
+                    }
+                    return@Thread
+                }
+                val wf = GitHubSync.ensureAndroidWorkflow(token, full, withAab = wantAab)
+                val tr = GitHubSync.triggerWorkflow(token, full)
+                ProjectStore.setLastTask(this, "github:$full")
+                runOnUiThread {
+                    chatReply("${pr.message}\n$wf\n$tr\n\n⏳ 5–15 min baad:\n• apk download\n• aab download\nActions: https://github.com/$full/actions")
+                }
+            }.start()
+            return true
+        }
+
+        if (low == "build phir bhi" || low == "phir bhi build") {
+            val token = TokenVault.get(this, "github") ?: run { chatReply("🔑 token missing"); return true }
+            val dir = GitHubSync.activeProjectDir(this) ?: run { chatReply("❌ no project"); return true }
+            val full = "${GitHubSync.login(token)}/${GitHubSync.safeRepoName(dir.name)}"
+            chatReply("▶️ Workflow dobara...")
+            Thread {
+                GitHubSync.ensureAndroidWorkflow(token, full, true)
+                val tr = GitHubSync.triggerWorkflow(token, full)
+                runOnUiThread { chatReply(tr) }
+            }.start()
+            return true
+        }
+
+        if (low == "haan fix" || low == "fix karo" || low == "error fix") {
+            val err = GitHubSync.getPendingError(this)
+            if (err.isNullOrBlank()) { chatReply("Koi pending GitHub error nahi."); return true }
+            chatReply("🛠 Error report (approval ke baad aap changes maang sakte ho):\n\n$err\n\nAb bolo kya change karna hai, misal:\ncode MainActivity.kt | ...\nya detail likho — main us file mein edit suggest/apply karunga.")
+            return true
+        }
+
+        if (low == "apk download" || low == "aab download" || low == "exe download" || low == "ipa download" || low == "ios download" ||
+            low.startsWith("apk download") || low.startsWith("aab download") || low.startsWith("exe download") || low.startsWith("ipa download") ||
+            low == "download apk" || low == "download aab" || low == "download exe" || low == "download ipa") {
+            val token = TokenVault.get(this, "github")
+            if (token == null) { chatReply("🔑 token save github ..."); return true }
+            val dir = GitHubSync.activeProjectDir(this)
+            val repoName = GitHubSync.safeRepoName(dir?.name ?: "app")
+            val user = GitHubSync.login(token)
+            if (user == null) { chatReply("❌ GitHub login fail"); return true }
+            val full = "$user/$repoName"
+            val wantAab = low.contains("aab")
+            val wantExe = low.contains("exe")
+            val wantIpa = low.contains("ipa") || low.contains("ios")
+            chatReply("📥 GitHub se ${when { wantIpa -> "IPA"; wantExe -> "EXE"; wantAab -> "AAB"; else -> "APK" }} artifact dhoondh raha hoon...")
+            Thread {
+                val arts = GitHubSync.latestArtifacts(token, full)
+                val match = arts.firstOrNull {
+                    val n = it.first.lowercase()
+                    when {
+                        wantIpa -> n.contains("ipa") || n.contains("ios")
+                        wantExe -> n.contains("exe") || n.contains("windows")
+                        wantAab -> n.contains("aab") || n.contains("bundle")
+                        else -> n.contains("apk") || n.contains("debug") || n.contains("app")
+                    }
+                } ?: arts.firstOrNull()
+                if (match == null) {
+                    runOnUiThread { chatReply("❌ Artifact nahi — pehle build complete ho (Actions). Phir dobara apk download") }
+                    return@Thread
+                }
+                val zip = File(getExternalFilesDir(null), "images/artifact_${match.second}.zip")
+                val dl = GitHubSync.downloadArtifactZip(token, match.third, zip)
+                if (dl.startsWith("❌")) { runOnUiThread { chatReply(dl) }; return@Thread }
+                val outDir = File(getExternalFilesDir(null), "images/builds").apply { mkdirs() }
+                val files = GitHubSync.extractBuildProduct(zip, outDir)
+                if (files.isEmpty()) {
+                    runOnUiThread { chatReply("⚠️ Zip mila lekin andar .apk/.aab nahi.\n$dl") }
+                    return@Thread
+                }
+                runOnUiThread {
+                    for (f in files) {
+                        chatReplyEx(
+                            "📦 ${f.name} (${f.length() / 1024} KB)\n${f.absolutePath}",
+                            org.json.JSONArray().put(
+                                org.json.JSONObject()
+                                    .put("label", "⬇️ Download ${f.name}")
+                                    .put("action", "dlfile")
+                                    .put("phone", f.absolutePath)
+                            ).toString()
+                        )
+                    }
+                }
+            }.start()
+            return true
+        }
+
+        if (low.startsWith("github push zip ") || low.startsWith("push zip ")) {
+            val token = TokenVault.get(this, "github")
+            if (token == null) { chatReply("🔑 token save github ghp_..."); return true }
+            val rest = msg.substringAfter("zip ").trim()
+            val parts = rest.split(Regex("\\s+"), limit = 2)
+            val zipPath = parts.getOrNull(0) ?: ""
+            val repoName = GitHubSync.safeRepoName(parts.getOrNull(1) ?: File(zipPath).nameWithoutExtension)
+            if (zipPath.isBlank()) { chatReply("Usage: github push zip /path/app.zip [repo]"); return true }
+            val dest = File(getExternalFilesDir(null), "work/_zip_" + repoName).apply { deleteRecursively(); mkdirs() }
+            chatReply("📦 Zip → GitHub ($repoName)...")
+            Thread {
+                val uz = GitHubSync.unzipTo(zipPath, dest)
+                if (uz.startsWith("❌")) { runOnUiThread { chatReply(uz) }; return@Thread }
+                val (ok, fullOrErr) = GitHubSync.ensureRepo(token, repoName, true)
+                if (!ok) { runOnUiThread { chatReply(fullOrErr) }; return@Thread }
+                val pr = GitHubSync.pushFolder(token, fullOrErr, dest)
+                if (pr.fail > 0) GitHubSync.setPendingError(this, pr.message)
+                runOnUiThread { chatReply("$uz\n${pr.message}") }
+            }.start()
+            return true
+        }
+
+// ---------- v3.0: GITHUB (token se) ----------
+
+        if (low == "github" || low.startsWith("github ")) {
+            val token = TokenVault.get(this, "github")
+            if (token == null) { chatReply("🔑 GitHub token nahi hai. Pehle:\ntoken save github <aap-ka-personal-access-token>\n(token GitHub → Settings → Developer settings → Personal access tokens se milta hai)"); return true }
+            chatReply("🐙 GitHub se baat kar raha hoon...")
+            Thread {
+                val hdr = mapOf("Authorization" to "Bearer $token", "Accept" to "application/vnd.github+json")
+                val rest = low.removePrefix("github").trim()
+                val reply = when {
+                    rest.isEmpty() || rest == "status" || rest == "who" -> {
+                        val (c, t) = TokenVault.http("GET", "https://api.github.com/user", hdr, null)
+                        if (c in 200..299) {
+                            val o = JSONObject(t)
+                            "👤 GitHub: ${o.optString("login")} — repos: ${o.optInt("public_repos")}, plan: ${o.optJSONObject("plan")?.optString("name") ?: "-"}\nCommands: github repo banao <naam> • github status"
+                        } else "❌ GitHub error (HTTP $c): ${t.take(200)}"
+                    }
+                    rest.startsWith("repo banao") || rest.startsWith("repo create") || rest.startsWith("repo bana ") -> {
+                        val name = rest.split(" ").lastOrNull { it.isNotBlank() } ?: ""
+                        if (name.isBlank()) "❌ Repo ka naam bolo: github repo banao myproject"
+                        else {
+                            val (c, t) = TokenVault.http("POST", "https://api.github.com/user/repos", hdr, JSONObject().put("name", name).put("private", true).toString())
+                            if (c in 200..299) {
+                                val o = JSONObject(t)
+                                "✅ Repo ban gaya (private): ${o.optString("html_url")}\nClone: git clone ${o.optString("clone_url")}"
+                            } else "❌ GitHub error (HTTP $c): ${t.take(300)}"
+                        }
+                    }
+                    rest.startsWith("build ") || rest == "build" -> {
+                        val repo = rest.removePrefix("build").trim()
+                        if (repo.isBlank()) "❌ Repo ka naam bolo: github build auto-bot-mobile"
+                        else {
+                            val (uc, ut) = TokenVault.http("GET", "https://api.github.com/user", hdr, null)
+                            val login = if (uc in 200..299) JSONObject(ut).optString("login") else ""
+                            val full = if (repo.contains("/")) repo else "$login/$repo"
+                            if (login.isBlank()) "❌ Token kaam nahi kar raha (HTTP $uc)"
+                            else {
+                                val (wc, wt) = TokenVault.http("GET", "https://api.github.com/repos/$full/actions/workflows", hdr, null)
+                                val wfs = if (wc in 200..299) JSONObject(wt).optJSONArray("workflows") ?: JSONArray() else JSONArray()
+                                if (wc !in 200..299) "❌ Repo nahi mila ya access nahi: $full (HTTP $wc)"
+                                else if (wfs.length() == 0) "❌ $full mein koi Actions workflow nahi"
+                                else {
+                                    val wfName = wfs.getJSONObject(0).optString("name")
+                                    val wfId = wfs.getJSONObject(0).optInt("id")
+                                    val (rc, rt) = TokenVault.http("GET", "https://api.github.com/repos/$full", hdr, null)
+                                    val branch = if (rc in 200..299) JSONObject(rt).optString("default_branch", "main") else "main"
+                                    val (dc, _) = TokenVault.http("POST", "https://api.github.com/repos/$full/actions/workflows/$wfId/dispatches", hdr, JSONObject().put("ref", branch).toString())
+                                    if (dc != 202) "❌ Workflow start nahi hua (HTTP $dc) — workflow mein 'workflow_dispatch' trigger chahiye"
+                                    else {
+                                        runOnUiThread { chatReply("🚀 '$wfName' chal raha hai ($full @ $branch)...\nBuild mein 5-10 min lagte hain, main wait kar raha hoon.") }
+                                        var conc = ""
+                                        var runId = 0L
+                                        val t0 = System.currentTimeMillis()
+                                        while (System.currentTimeMillis() - t0 < 25 * 60 * 1000L) {
+                                            Thread.sleep(12000)
+                                            val (pc, pt) = TokenVault.http("GET", "https://api.github.com/repos/$full/actions/runs?per_page=1&event=workflow_dispatch", hdr, null)
+                                            if (pc in 200..299) {
+                                                val rs = JSONObject(pt).optJSONArray("workflow_runs") ?: JSONArray()
+                                                if (rs.length() > 0) {
+                                                    val r = rs.getJSONObject(0)
+                                                    if (r.optString("status") == "completed") { conc = r.optString("conclusion"); runId = r.optLong("id"); break }
+                                                }
+                                            }
+                                        }
+                                        if (conc.isEmpty()) "⏳ Build abhi chal raha hai (25 min+). Baad mein 'github apk $repo' se APKs le lena."
+                                        else if (conc != "success") "❌ Build fail hua ($conc). Log: https://github.com/$full/actions"
+                                        else {
+                                            runOnUiThread { chatReply("✅ Build green! APKs phone mein save kar raha hoon...") }
+                                            val (ac, at) = TokenVault.http("GET", "https://api.github.com/repos/$full/actions/runs/$runId/artifacts", hdr, null)
+                                            val arts = if (ac in 200..299) JSONObject(at).optJSONArray("artifacts") ?: JSONArray() else JSONArray()
+                                            if (arts.length() == 0) "✅ Build ho gaya par koi artifact (APK) nahi bana."
+                                            else {
+                                                val saved = StringBuilder()
+                                                for (i in 0 until arts.length()) {
+                                                    val a = arts.getJSONObject(i)
+                                                    val zip = ghDownload("https://api.github.com/repos/$full/actions/artifacts/" + a.optInt("id") + "/zip", token)
+                                                    if (zip != null) for (p in extractApks(zip, repo)) saved.append("📥 ").append(p).append("\n")
+                                                }
+                                                if (saved.isBlank()) "❌ APK download fail. Baad mein 'github apk $repo' try karo."
+                                                else "✅ Build complete! Phone mein save:\n$saved(File manager → Download → AutoBotBuilds)"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    rest.startsWith("apk ") || rest.startsWith("zip ") -> {
+                        val repo = rest.removePrefix(if (rest.startsWith("apk ")) "apk" else "zip").trim()
+                        if (repo.isBlank()) "❌ Repo ka naam bolo: github apk auto-bot-mobile"
+                        else {
+                            val (uc, ut) = TokenVault.http("GET", "https://api.github.com/user", hdr, null)
+                            val login = if (uc in 200..299) JSONObject(ut).optString("login") else ""
+                            val full = if (repo.contains("/")) repo else "$login/$repo"
+                            val (rc, rt) = TokenVault.http("GET", "https://api.github.com/repos/$full/actions/runs?per_page=1&status=success", hdr, null)
+                            if (rc !in 200..299) "❌ Repo nahi mila: $full (HTTP $rc)"
+                            else {
+                                val runs = JSONObject(rt).optJSONArray("workflow_runs") ?: JSONArray()
+                                if (runs.length() == 0) "❌ $full mein koi successful build nahi"
+                                else {
+                                    runOnUiThread { chatReply("📥 Latest successful build ki files la raha hoon...") }
+                                    val runId = runs.getJSONObject(0).optLong("id")
+                                    val (ac, at) = TokenVault.http("GET", "https://api.github.com/repos/$full/actions/runs/$runId/artifacts", hdr, null)
+                                    val arts = if (ac in 200..299) JSONObject(at).optJSONArray("artifacts") ?: JSONArray() else JSONArray()
+                                    if (arts.length() == 0) "❌ Us build mein koi artifact nahi"
+                                    else {
+                                        val saved = StringBuilder()
+                                        for (i in 0 until arts.length()) {
+                                            val a = arts.getJSONObject(i)
+                                            val zip = ghDownload("https://api.github.com/repos/$full/actions/artifacts/" + a.optInt("id") + "/zip", token)
+                                            if (zip != null) for (p in extractApks(zip, repo)) saved.append("📥 ").append(p).append("\n")
+                                        }
+                                        if (saved.isBlank()) "❌ Download fail. Internet/token check karo."
+                                        else "✅ Save ho gaya:\n$saved(File manager → Download → AutoBotBuilds)"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    rest.startsWith("runs ") -> {
+                        val repo = rest.removePrefix("runs").trim()
+                        if (repo.isBlank()) "❌ Repo ka naam bolo: github runs auto-bot-mobile"
+                        else {
+                            val (uc, ut) = TokenVault.http("GET", "https://api.github.com/user", hdr, null)
+                            val login = if (uc in 200..299) JSONObject(ut).optString("login") else ""
+                            val full = if (repo.contains("/")) repo else "$login/$repo"
+                            val (rc, rt) = TokenVault.http("GET", "https://api.github.com/repos/$full/actions/runs?per_page=3", hdr, null)
+                            if (rc !in 200..299) "❌ Repo nahi mila: $full (HTTP $rc)"
+                            else {
+                                val runs = JSONObject(rt).optJSONArray("workflow_runs") ?: JSONArray()
+                                if (runs.length() == 0) "📭 $full mein abhi koi run nahi"
+                                else {
+                                    val sb = StringBuilder("📋 $full — last runs:\n")
+                                    for (i in 0 until runs.length()) {
+                                        val r = runs.getJSONObject(i)
+                                        val st = if (r.optString("status") == "completed") r.optString("conclusion") else r.optString("status") + " (chal raha)"
+                                        sb.append("• ").append(r.optString("name")).append(" — ").append(st).append(" — ").append(r.optString("created_at").take(16).replace("T", " ")).append("\n")
+                                    }
+                                    sb.toString()
+                                }
+                            }
+                        }
+                    }
+                    else -> "🐙 GitHub commands:\n• github status — account info\n• github repo banao <naam> — naya private repo\n• github build <repo> — Actions se APK build + phone mein save\n• github apk <repo> — last build ki APKs phone mein\n• github runs <repo> — build status"
+                }
+                runOnUiThread { chatReply(reply) }
+            }.start()
+            return true
+        }
+
+
+        // WhatsApp voice / video call
+        if (low.startsWith("wa call ") || low.startsWith("whatsapp call ") || low.startsWith("wa voice ") ||
+            low.startsWith("wa video ") || low.startsWith("whatsapp video ") || low.startsWith("wa video call ") ||
+            (low.contains("whatsapp") && (low.contains("call") || low.contains("video"))) ||
+            (low.contains("wa ") && low.contains("call"))) {
+            val video = low.contains("video")
+            var target = msg
+            for (p in listOf("whatsapp video call", "wa video call", "whatsapp call", "wa voice call", "wa video", "wa call", "whatsapp video", "whatsapp")) {
+                if (low.startsWith(p)) { target = msg.substring(p.length).trim(); break }
+            }
+            target = target.replace(Regex("(?i)\\s*(ko|pr|pe|par)?\\s*(call|kro|karo|do)?\\s*$"), "").trim()
+            val phone = Regex("(\\+?\\d[\\d\\s-]{6,}\\d)").find(target)?.value?.replace(Regex("[\\s-]"), "")
+            val hits = if (phone != null) emptyList() else resolveCallTargets(target)
+            when {
+                phone != null -> chatReply(SimDialer.whatsAppCall(this, phone, video))
+                hits.size == 1 -> chatReply(SimDialer.whatsAppCall(this, hits[0].second, video) + "\n👤 ${hits[0].first}")
+                hits.size > 1 -> {
+                    val sb = StringBuilder("📞 Kai contacts — kis pe ${if (video) "video" else "WA"} call?\n")
+                    hits.take(8).forEachIndexed { i, p -> sb.append("${i + 1}. ${p.first} — ${p.second}\n") }
+                    chatReply(sb.toString() + "Number ya poora naam likho.")
+                }
+                else -> chatReply("❌ Contact/number nahi mila: $target\nMisal: wa call Rizwan Bai")
+            }
+            return true
+        }
+        // Normal SIM call by name/number
+        if (low.startsWith("call ") || low.endsWith(" ko call karo") || low.endsWith(" ko call kro") ||
+            low.endsWith(" ko call") || Regex("(?i).+\\s+ko\\s+call").containsMatchIn(low) ||
+            (low.contains("call") && !low.contains("whatsapp") && !low.startsWith("wa ") && !low.contains("github"))) {
+            var target = when {
+                low.startsWith("call ") -> msg.substring(5).trim()
+                else -> msg.replace(Regex("(?i)\\s*ko\\s*call\\s*(karo|kro|do)?\\s*$"), "").replace(Regex("(?i)^call\\s*"), "").trim()
+            }
+            val forcedSim = SimDialer.parseSimFromText(target)
+            target = target.replace(Regex("(?i)\\s*sim\\s*[12one twoekdo]+\\s*"), " ").trim()
+            val phoneDirect = Regex("(\\+?\\d[\\d\\s-]{6,}\\d)").find(target)?.value?.replace(Regex("[\\s-]"), "")
+            val hits = if (phoneDirect != null) listOf(target to phoneDirect) else resolveCallTargets(target)
+            when {
+                hits.isEmpty() && phoneDirect == null -> chatReply("❌ Koi match nahi: $target\ncontacts / client list dekho")
+                hits.size > 1 -> {
+                    val sb = StringBuilder("📞 Multiple matches — kis ko call?\n")
+                    hits.take(10).forEachIndexed { i, p -> sb.append("${i + 1}. ${p.first} — ${p.second}\n") }
+                    chatReply(sb.append("Poora naam ya number likho (e.g. call Rizwan Bai)").toString())
+                }
+                else -> {
+                    val (nm, ph) = if (phoneDirect != null) (phoneDirect to phoneDirect) else hits[0]
+                    startSmartCall(nm, ph, forcedSim)
+                }
+            }
+            return true
+        }
+
+        if (low == "dep" || low == "dep list" || low == "deps" || low.startsWith("dep ")) {
+            handleDepCommand(msg.trim(), fromChat = true, termActive()); return true
+        }
+
         if (low.contains("screen parho") || low.contains("screen padho") || low.contains("read screen") || low.contains("screen text") || low.contains("screen read")) {
             if (!AutoBotAccessibilityService.isOn()) { chatReply(accSteps); return true }
             val txt = AutoBotAccessibilityService.readScreen()
@@ -1707,39 +2561,8 @@ class MainActivity : AppCompatActivity() {
                 return true
             }
         }
-        if (low.startsWith("call ")) {
-            // v3.6: sim-aware direct call ("call 0300... sim 2")
-            val fs = SimDialer.parseSimFromText(low)
-            val bare = msg.substring(5).trim()
-                .replace(Regex("(?i)\\bsim\\s*(1|2|one|two|ek|do)?\\b"), " ")
-                .replace(Regex("\\s+"), " ").trim()
-            runOnUiThread { startSmartCall(bare, bare, fs) }
-            return true
-        }
         if (low.startsWith("wa ") || low.startsWith("whatsapp ")) {
             val q = msg.substring(low.indexOf(' ') + 1).trim()
-            // ---------- v3.6: wa call <name/number> → WhatsApp voice call | wa video → video call ----------
-            val waCallHit = Regex("(?i)^(wa|whatsapp)\\s+(call|voice|audio|video)\\b").containsMatchIn(low)
-            if (waCallHit) {
-                val video = low.contains("video")
-                var tgt = q.replace(Regex("(?i)^(call|voice|audio|video)\\s+"), "")
-                    .replace(Regex("(?i)\\bsim\\s*(1|2|one|two|ek|do)?\\b"), " ")
-                    .replace(Regex("(?i)\\bko\\b"), " ")
-                    .replace(Regex("\\s+"), " ").trim()
-                val dph = OfflineBrain.extractPhone(tgt)
-                if (dph != null) { runOnUiThread { chatReply(SimDialer.whatsAppCall(this, OfflineBrain.normalizePhone(dph), video)) }; return true }
-                val contacts = OfflineBrain.loadContacts(this)
-                val hits = if (tgt.isBlank()) emptyList() else OfflineBrain.resolve(contacts, tgt)
-                when {
-                    hits.isEmpty() -> chatReply("❓ \"$tgt\" saved nahi mila. Pehle: save $tgt <number>\nYa seedha: wa call 03001234567")
-                    hits.size == 1 -> { val c = hits[0]; runOnUiThread { chatReply(SimDialer.whatsAppCall(this, c.phone, video) + "\n👤 ${c.name}") } }
-                    else -> {
-                        val names = hits.mapIndexed { i, c -> "${i + 1}. ${c.name} — ${c.phone}" }
-                        chatReply("🤔 ${hits.size} log mile:\n${names.joinToString("\n")}\nPoora naam bolo jis ko WhatsApp call karna hai.")
-                    }
-                }
-                return true
-            }
             runOnUiThread { openUrl("https://wa.me/" + q.replace(Regex("[^0-9]"), "")) }
             chatReply("💬 WhatsApp chat khul rahi hai..."); return true
         }
@@ -1841,6 +2664,37 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 try { startActivity(Intent(this@MainActivity, SimDialerActivity::class.java)) }
                 catch (_: Exception) { chatReply(SimDialer.statusText(this@MainActivity)) }
+            }
+        }
+
+                @android.webkit.JavascriptInterface
+        fun openLocalFile(path: String) {
+            runOnUiThread {
+                try {
+                    val f = java.io.File(path)
+                    if (!f.isFile) { chatReply("❌ File nahi: $path"); return@runOnUiThread }
+                    val uri = androidx.core.content.FileProvider.getUriForFile(
+                        this@MainActivity, packageName + ".fileprovider", f
+                    )
+                    val mime = when (f.extension.lowercase()) {
+                        "apk" -> "application/vnd.android.package-archive"
+                        "aab" -> "application/octet-stream"
+                        "exe" -> "application/vnd.microsoft.portable-executable"
+                        "ipa" -> "application/octet-stream"
+                        "png", "jpg", "jpeg", "webp" -> "image/*"
+                        "zip" -> "application/zip"
+                        else -> "*/*"
+                    }
+                    val i = Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime)
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    try { startActivity(i) } catch (_: Exception) {
+                        val send = Intent(Intent.ACTION_SEND).setType(mime)
+                            .putExtra(Intent.EXTRA_STREAM, uri)
+                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        startActivity(Intent.createChooser(send, "File"))
+                    }
+                    chatReply("📁 ${f.name} — open/share sheet")
+                } catch (e: Exception) { chatReply("❌ Open fail: ${e.message}") }
             }
         }
 
@@ -2296,6 +3150,158 @@ class MainActivity : AppCompatActivity() {
                 .put(org.json.JSONObject().put("label", "❌ Nahi").put("action", "simcancel").put("phone", ""))
                 .toString()
         )
+    }
+
+// -------------------- v3.7: powers port (GitHub / Phonebook / Clients / Images / Deps) --------------------
+
+    private fun handleDepCommand(trimmed: String, fromChat: Boolean, sess: TermSession): Boolean {
+        val low = trimmed.lowercase()
+        if (low != "dep" && low != "dep list" && low != "deps" && !low.startsWith("dep ")) return false
+        Thread {
+            val msg = try {
+                when {
+                    low == "dep" || low == "dep list" || low == "deps" || low == "dep help" ->
+                        DepStore.listText(this)
+                    low.startsWith("dep install url ") -> {
+                        val rest = trimmed.substring(16).trim().split(Regex("\\s+"))
+                        if (rest.size < 2) "❌ Usage: dep install url <https://...> <name>"
+                        else DepStore.installFromUrl(this, rest[0], rest[1]) { p ->
+                            runOnUiThread { appendTermTo(sess, p + "\n") }
+                        }
+                    }
+                    low.startsWith("dep install ") -> {
+                        val id = trimmed.substring(12).trim()
+                        DepStore.install(this, id) { p ->
+                            runOnUiThread { appendTermTo(sess, p + "\n") }
+                        }
+                    }
+                    low.startsWith("dep remove ") || low.startsWith("dep uninstall ") || low.startsWith("dep delete ") -> {
+                        val id = low.substringAfter(" ").substringAfter(" ").trim().ifBlank {
+                            trimmed.substringAfter(" ").substringAfter(" ").trim()
+                        }
+                        DepStore.remove(this, id.ifBlank { trimmed.substringAfterLast(" ").trim() })
+                    }
+                    else -> DepStore.listText(this)
+                }
+            } catch (e: Exception) {
+                "❌ Dep error: ${e.message}"
+            }
+            runOnUiThread {
+                appendTermTo(sess, msg + "\n")
+                if (fromChat) chatReply(msg)
+            }
+        }.start()
+        return true
+    }
+
+    // shell engine: real Android sh, background mein bot bhi use karta hai
+
+    private fun shareImageWhatsApp(path: String, phoneHint: String? = null): String {
+        val f = java.io.File(path)
+        if (!f.isFile) return "❌ Image nahi mili: $path"
+        return try {
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                this, packageName + ".fileprovider", f
+            )
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "image/*"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                setPackage("com.whatsapp")
+            }
+            startActivity(send)
+            "✅ WhatsApp share khula — contact choose karke image bhejo." +
+                (if (!phoneHint.isNullOrBlank()) "\n(Target hint: $phoneHint)" else "")
+        } catch (e: Exception) {
+            try {
+                val uri = androidx.core.content.FileProvider.getUriForFile(
+                    this, packageName + ".fileprovider", f
+                )
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "image/*"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivity(Intent.createChooser(send, "Image bhejo"))
+                "✅ Share sheet khuli (WhatsApp choose karo)."
+            } catch (e2: Exception) {
+                "❌ Image share fail: ${e2.message}"
+            }
+        }
+    }
+
+    // ---------- v3.0: NOTIFY numbers (WhatsApp pe notification) ----------
+
+    private fun resolveCallTargets(query: String): List<Pair<String, String>> {
+        val q = query.trim()
+        if (q.length < 2) return emptyList()
+        val out = linkedMapOf<String, String>() // phone -> name
+        try {
+            Phonebook.findByName(this, q, 12).forEach { out[it.number] = it.name }
+        } catch (_: Exception) {}
+        try {
+            MemoryVault.findByName(this, q).forEach {
+                if (it.phone.isNotBlank()) out[it.phone.filter { ch -> ch.isDigit() || ch == '+' }] = it.name
+            }
+        } catch (_: Exception) {}
+        // relation-style: "bai" / "bhai" → all names containing bai/bhai
+        val low = q.lowercase()
+        if (low in listOf("bai", "bhai", "brother") || low.endsWith(" bai") || low.endsWith(" bhai")) {
+            try {
+                Phonebook.all(this, 200).forEach { e ->
+                    val n = e.name.lowercase()
+                    if (n.contains("bai") || n.contains("bhai") || n.contains("brother")) {
+                        if (low == "bai" || low == "bhai" || low == "brother" || n.contains(low)) {
+                            out[e.number] = e.name
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+        // exact-ish: prefer names that contain full query as whole
+        val list = out.map { (ph, nm) -> nm to ph }
+        val exact = list.filter { it.first.equals(q, true) }
+        if (exact.isNotEmpty()) return exact
+        val starts = list.filter { it.first.lowercase().startsWith(q.lowercase()) }
+        if (starts.size == 1) return starts
+        // unique contains
+        val contains = list.filter { it.first.lowercase().contains(q.lowercase()) }
+        if (contains.size == 1) return contains
+        return if (contains.isNotEmpty()) contains else list
+    }
+
+
+    // ---------- v3.7: saved client/supplier ko WhatsApp message (wa.me based) ----------
+    private fun waMessageToPerson(nameOrPhone: String, message: String) {
+        Thread {
+            val q = nameOrPhone.trim()
+            val looksPhone = q.replace("+", "").replace(" ", "").all { it.isDigit() } && q.length >= 8
+            var result: String
+            if (looksPhone) {
+                result = try {
+                    val url = "https://wa.me/" + q.filter { it.isDigit() } + "?text=" + java.net.URLEncoder.encode(message, "UTF-8")
+                    runOnUiThread { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                    "✅ WhatsApp khula: $q — Send confirm karo."
+                } catch (e: Exception) { "❌ WA open fail: ${e.message}" }
+            } else {
+                val matches = if (Phonebook.hasPermission(this)) Phonebook.findByName(this, q) else emptyList()
+                result = when {
+                    matches.size == 1 -> {
+                        val num = matches[0].number.filter { it.isDigit() || it == '+' }
+                        try {
+                            val url = "https://wa.me/" + num.filter { it.isDigit() } + "?text=" + java.net.URLEncoder.encode(message, "UTF-8")
+                            runOnUiThread { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                            "✅ ${matches[0].name} (${matches[0].number}) — WhatsApp khula, sirf inhe message.\nSend dabao."
+                        } catch (e: Exception) { "❌ ${e.message}" }
+                    }
+                    matches.size > 1 -> "📇 Kai contacts mile — number choose karo:\n" +
+                        matches.mapIndexed { i, e -> "${i + 1}. ${e.name} — ${e.number}" }.joinToString("\n") +
+                        "\n\nPhir: whatsapp ${matches[0].number} | $message"
+                    else -> "❌ '$q' phonebook mein nahi.\n• contacts permission / naam check\n• ya: whatsapp +92... | message"
+                }
+            }
+            runOnUiThread { chatReply(result) }
+        }.start()
     }
 
     // ---------- v2.6: brain contact → phone contact book bhi ----------

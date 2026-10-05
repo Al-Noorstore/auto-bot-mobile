@@ -623,6 +623,7 @@ $('msg').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey
     else if (a === 'wa') AutoBotNative.openWhatsApp(ph);
     else if (a === 'simcall' && AutoBotNative.simCall) AutoBotNative.simCall(ph);
     else if (a === 'simcancel' && AutoBotNative.handleChatCommand) AutoBotNative.handleChatCommand('cancel');
+    else if (a === 'dlfile' && AutoBotNative.openLocalFile) AutoBotNative.openLocalFile(ph);
     else if (a === 'simset' && AutoBotNative.handleChatCommand) AutoBotNative.handleChatCommand(ph);
     else if (a === 'dlmodel' && AutoBotNative.downloadModel) AutoBotNative.downloadModel(ph);
       else if (a === 'dlvoice' && AutoBotNative.downloadVoiceModel) AutoBotNative.downloadVoiceModel(ph);

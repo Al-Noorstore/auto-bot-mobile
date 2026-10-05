@@ -1,5 +1,16 @@
 # Auto Bot Mobile (Native Android App)
 
+## v3.7 — GitHub + Powers port (engine ke bina)
+
+- 🐙 **GitHub power** — token save github ghp_xxx ke baad: github push, github status, github repo banao, github apk <repo>, apk download / aab / exe / ipa banao (GitHub Actions se build), github push zip
+- 📇 **Phonebook** — device contacts: phonebook, contacts <naam> (READ_CONTACTS permission)
+- 👥 **Clients CRM** — client add Ali | phone +92... | email | country | niche, client list, client search Ali, message client Ali | text (WhatsApp), supplier add, duplicate par haan/nahi confirm
+- 🖼️ **ImageBrain** — image generate <prompt> (Gemini/OpenAI key), image padho <path> | sawal (vision), wa image, last image
+- 🐍 **dep store** — dep list, dep install <id> (PRO python wheels)
+- 📁 **Project memory** — project new/open/note, remember key | value (project-scoped), project memory
+- 🤝 **Smart call router** — naam se call ab Phonebook + clients se bhi resolve (sim-aware)
+- ☎️ **Roz client report** — mera number +92... save karo → roz 9 baje WhatsApp pe client report
+
 ## v3.6 — Dual-SIM + WhatsApp calls + App Lock (GGUF wale features ka port, engine ke bina)
 
 - 📱 **SIM Dialer page** (menu bar) — default call SIM choose karo: SIM 1 / SIM 2 / har baar poochho

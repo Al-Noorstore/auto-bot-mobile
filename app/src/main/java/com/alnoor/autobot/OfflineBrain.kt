@@ -978,11 +978,7 @@ object OfflineBrain {
             val contacts = loadContacts(ctx)
             val hits = resolve(contacts, cleanTarget)
             when {
-                hits.isEmpty() -> {
-                    r.text = t(lang,
-                        "\"$cleanTarget\" is not saved yet. Say: \"save $cleanTarget <number>\"",
-                        "\"$cleanTarget\" saved nahi mila.\nSave karo: \"save $cleanTarget <number>\" (relation optional: bhai/behen/mamo...)\nSaved list: \"contacts\"")
-                }
+                hits.isEmpty() -> return null  // v3.7: MainActivity ka phonebook+client call-router sambhalega
                 hits.size == 1 -> {
                     val c = hits[0]
                     val rel = if (c.relation != null) " (${c.relation})" else ""
