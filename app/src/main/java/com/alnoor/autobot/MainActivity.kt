@@ -2144,7 +2144,7 @@ ipa download
                 // ---------- v3.4: accessibility automation (tap/scroll/back/home) ----------
         val tapTarget = Regex("^tap\\s+(.+?)\\s*(?:karo|kro|do)*\\s*$").find(low)?.groupValues?.get(1)
             ?: Regex("^(.+?)\\s+(?:ko\\s+)?(?:dabao|daba|click\\s+karo|press\\s+karo)\\s*(?:karo|kro|do|de)*\\s*$").find(low)?.groupValues?.get(1)?.takeIf { low.contains("dabao") || low.contains("daba ") || low.contains("click karo") || low.contains("press karo") }
-        if (tapTarget != null && !low.contains("call")) {
+        if (tapTarget != null && !low.contains("call") && !low.startsWith("tap xy") && !low.startsWith("click xy")) {
             if (!AutoBotAccessibilityService.isOn()) { chatReply(accSteps); return true }
             val res = AutoBotAccessibilityService.tapText(tapTarget)
             chatReply(when (res) {
@@ -2174,6 +2174,18 @@ ipa download
             return true
         }
 
+        if (low.startsWith("type ") || low.startsWith("likho ") || low.startsWith("write ")) {
+            if (!AutoBotAccessibilityService.isOn()) { chatReply(accSteps); return true }
+            val text = msg.substringAfter(" ").trim()
+            val res = AutoBotAccessibilityService.typeText(text)
+            chatReply(when (res) {
+                "OK" -> "⌨️ Typed: $text"
+                "NO_EDIT" -> "❌ Koi text field focus nahi — pehle field tap karo."
+                "OFF" -> accSteps
+                else -> "❌ Type fail ($res)"
+            })
+            return true
+        }
         // ---------- v4.2 parity: recents / notifications / swipe / tap xy / longpress / foreground app ----------
         if (low == "recents" || low.contains("recent apps")) {
             if (!AutoBotAccessibilityService.isOn()) { chatReply(accSteps); return true }
