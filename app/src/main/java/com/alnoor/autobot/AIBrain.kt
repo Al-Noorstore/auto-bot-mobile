@@ -72,6 +72,18 @@ object AIBrain {
      * 1) Active key se try → 2) baaki ON keys se try → 3) sab fail (credit/invalid/off) →
      * natural reply: API key connect karo ya Ollama offline model; agar model connected hai to batado.
      */
+    /** v3.12: GITHUB AI — toggle (admin panel / chat: github ai on-off) */
+    private fun githubAiOn(ctx: Context): Boolean =
+        try { ctx.getSharedPreferences("autobot", Context.MODE_PRIVATE).getBoolean("github_ai", true) } catch (_: Exception) { true }
+
+    /** v3.12: GITHUB AI fallback keys — TokenVault ke saare github tokens PAT ki tarah models.github.ai pe (multiple allowed) */
+    private fun githubFallbackKeys(ctx: Context): List<KeyStore.ApiKey> {
+        if (!githubAiOn(ctx)) return emptyList()
+        val model = try { ctx.getSharedPreferences("autobot", Context.MODE_PRIVATE).getString("github_ai_model", "") ?: "" } catch (_: Exception) { "" }
+        val toks = try { TokenVault.list(ctx).filter { it.key.startsWith("github") && it.value.isNotBlank() }.map { it.toPair() } } catch (_: Exception) { emptyList<Pair<String, String>>() }
+        return toks.map { KeyStore.ApiKey("GitHub", "GitHubAI:" + it.first, it.second, "https://models.github.ai/inference", model.ifBlank { "openai/gpt-4o-mini" }) }
+    }
+
     fun ask(ctx: Context, question: String): String {
         val keys = KeyStore.load(ctx).filter { it.enabled && it.key.isNotBlank() }
         val active = keys.firstOrNull { it.active } ?: keys.firstOrNull()
@@ -82,17 +94,27 @@ object AIBrain {
                 tryAsk(k, question)?.let { return "(🔑 $k.label se aaya — active key kaam nahi kar rahi thi)\n$it" }
             }
         }
+        // v3.12: GITHUB AI FALLBACK — koi API key nahi / sab fail -> GitHub PAT se models.github.ai
+        for (gk in githubFallbackKeys(ctx)) {
+                tryAsk(gk, question)?.let { return "(🐙 GitHub AI se aaya — ${gk.label})\n$it" }
+            }
         return failReply(ctx, question)
     }
 
     /** v3.9: API-only answer (bugfix / code generation ke liye) — local fallback NAHI. null = key nahi ya fail */
     fun askApi(ctx: Context, prompt: String): String? {
         val keys = KeyStore.load(ctx).filter { it.enabled && it.key.isNotBlank() }
-        val active = keys.firstOrNull { it.active } ?: keys.firstOrNull() ?: return null
-        tryAsk(active, prompt)?.let { return it }
-        for (k in keys) {
-            if (k.label == active.label) continue
-            tryAsk(k, prompt)?.let { return it }
+        val active = keys.firstOrNull { it.active } ?: keys.firstOrNull()
+        if (active != null) {
+            tryAsk(active, prompt)?.let { return it }
+            for (k in keys) {
+                if (k.label == active.label) continue
+                tryAsk(k, prompt)?.let { return it }
+            }
+        }
+        // v3.12: GITHUB AI FALLBACK
+        for (gk in githubFallbackKeys(ctx)) {
+            tryAsk(gk, prompt)?.let { return it }
         }
         return null
     }
@@ -117,6 +139,7 @@ object AIBrain {
         sb.append(if (hasAnyKey) "🧠 AI se jawab nahi mil paya — key ka credit khatam / key ghalat ho sakti hai, ya internet band hai.\n\n"
                   else "🧠 Is sawal ke liye AI chahiye, aur abhi koi API key connect nahi hai.\n\n")
         sb.append("⚡ Sabse aasan fix — chat mein likho:\n   api key <apni-key>\n(Gemini / OpenAI / Groq / OpenRouter khud pehchan lunga; free Gemini key: aistudio.google.com/apikey)\n")
+        sb.append("\uD83D\uDC19 Ya GitHub PAT se AI: github ai token <PAT> (toggle: github ai on)")
         if (off != null) sb.append("\n📦 Offline model ($off) select hai, lekin abhi app mein model chalane wala engine nahi — filhal key best hai.")
         else sb.append("\n📦 Offline model chahiye? Likho: transformer download (phone ke hisaab se suggest karunga).")
         sb.append("\n\n✅ Tab tak local commands chalte hain: open youtube, call, contact, torch, volume… ('help' likho).")
