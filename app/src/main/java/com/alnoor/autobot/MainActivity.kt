@@ -855,6 +855,8 @@ class MainActivity : AppCompatActivity() {
         }
         shellInit()
         super.onCreate(savedInstanceState)
+        // v4.12: OFFLINE MIC PRE-BUNDLED — APK mein voice model included; pehli run par extract (ek baar, background)
+        Thread { try { val r = SpeechEngine.ensureBundled(this) { }; if (r.isNotBlank()) appendTerm("\uD83C\uDFA4 $r") } catch (_: Exception) {} }.start()
         Thread.setDefaultUncaughtExceptionHandler(CrashLogger(this))
         // SAB SE PEHLE: pichle crash ka log dikha do (app crash ho to bhi next launch pe yahan aayenge)
         try {
