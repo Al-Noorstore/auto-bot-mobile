@@ -3,6 +3,7 @@ package com.alnoor.autobot
 import android.accessibilityservice.AccessibilityService
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.graphics.Rect
 
 /**
  * v3.3: Auto Bot Accessibility — screen padhna (aur aage click/scroll).
