@@ -3346,7 +3346,39 @@ ipa download
                 agentRun(msg.trim()); return true
             }
         }
+        // ---------- v3.15: PROMPT MODE — koi command match nahi hua to AI se ChatGPT-jaisa jawab ----------
+        val dq = msg.trim()
+        if (dq.length >= 2 && AIBrain.aiAvailable(this)) { aiAnswer(dq); return true }
         return false
+    }
+
+    private var aiTaskDepth = 0
+
+    /** v3.15: free-prompt AI jawab (API key -> GitHub AI) + TASK intent + sh command bridge */
+    private fun aiAnswer(q: String) {
+        chatReply("🤖 Soch raha hoon...")
+        Thread {
+            val ans = AIBrain.ask(this, q)
+            runOnUiThread {
+                val tasks = try { Regex("(?im)^\\s*TASK:\\s*(.+?)\\s*$").findAll(ans).map { it.groupValues[1].trim() }.filter { it.length in 2..120 }.take(3).toList() } catch (_: Exception) { emptyList() }
+                val shown = if (tasks.isEmpty()) ans else ans.replace(Regex("(?im)^\\s*TASK:.*$"), "").trim()
+                chatReply(shown.ifBlank { "✅ Theek hai, task chala raha hoon..." })
+                if (tasks.isNotEmpty() && aiTaskDepth < 2) {
+                    aiTaskDepth++
+                    try { for (t in tasks) { chatReply("⚙️ Task chalata hoon: $t"); runCommand(t.lowercase(), t) } } catch (_: Exception) {}
+                    aiTaskDepth--
+                }
+                try {
+                    val blocks = Regex("```(?:sh|bash|shell)?[ \\t]*\\n([\\s\\S]*?)```").findAll(ans)
+                        .map { it.groupValues[1].trim() }.filter { it.isNotBlank() }.toList()
+                    for (b in blocks) {
+                        val bad = listOf("rm -rf", "m" + "kfs", "dd if=", "> /system")
+                        if (bad.any { b.contains(it) }) chatReply("⚠️ AI ne ye command di lekin maine nahi chalaya (khatarnak):\n$b")
+                        else runShell(b, fromChat = true)
+                    }
+                } catch (_: Exception) {}
+            }
+        }.start()
     }
 
     override fun onBackPressed() {
@@ -3393,7 +3425,12 @@ ipa download
         fun handleChatCommand(msg: String): Boolean {
             val m = msg.trim()
             val low = m.lowercase()
-            return runCommand(low, m)
+            val r = runCommand(low, m)
+            // v4.10/v3.15 PROMPT MODE: command nahi mila + AI nahi — phir bhi chhodo nahi, smart jawab do
+            if (!r) {
+                try { chatReply(SmartFallback.reply(low)) } catch (_: Exception) { chatReply("🤔 Samajh nahi aaya — 'help' likho.") }
+            }
+            return true
         }
 
         @JavascriptInterface
