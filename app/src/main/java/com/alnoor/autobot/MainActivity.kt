@@ -2853,7 +2853,11 @@ ipa download
             return true
         }
 
-        if (low.startsWith("type ") || low.startsWith("likho ") || low.startsWith("write ")) {
+        // v4.9: "write thirsty crow" / "likho ..." = AI se likhwana. Sirf "type ..." (ya accessibility ON + chhota text) = screen typing.
+        val _isTypeCmd = low.startsWith("type ") ||
+            ((low.startsWith("likho ") || low.startsWith("write ")) && AutoBotAccessibilityService.isOn() &&
+                (low.contains(" in field") || low.contains(" field mein") || low.contains(" yahan") || low.contains(" here") || low.contains(" screen par")))
+        if (_isTypeCmd) {
             if (!AutoBotAccessibilityService.isOn()) { chatReply(accSteps); return true }
             val text = msg.substringAfter(" ").trim()
             val res = AutoBotAccessibilityService.typeText(text)
@@ -3243,6 +3247,38 @@ ipa download
         }
         if (low.startsWith("pip install ")) { pipInstall(msg.substring(12).trim(), fromChat = true); chatReply("⏳ pip install chal raha hai..."); return true }
         if (low.startsWith("cmd ")) { runShell(msg.substring(4).trim(), fromChat = true); chatReply("⏳ Command chal raha hai terminal mein..."); return true }
+        // Story / creative writing (v3.14)
+        if ((Regex("(?i)(story|kahani|kahaani|poem|nazm|essay|article|letter|khat|speech|paragraph|dastan)").containsMatchIn(low) ||
+                low.startsWith("write ") || low.startsWith("likho ") || low.startsWith("likh do ") || low.startsWith("compose "))
+            && !low.startsWith("open ") && !low.contains("accessibility") && !low.startsWith("type ") && !low.startsWith("write file") && !low.startsWith("code ")) {
+            // v4.9: kya likhna hai — poori request AI ko do, offline model (Smol/Qwen) bhi seedha likhe
+            val kind = when {
+                Regex("(?i)(poem|nazm)").containsMatchIn(low) -> "poem"
+                Regex("(?i)(essay|article|speech|paragraph)").containsMatchIn(low) -> "essay"
+                Regex("(?i)(letter|khat)").containsMatchIn(low) -> "letter"
+                else -> "story"
+            }
+            val topic = msg.replace(Regex("(?i)^(please\\s*)?(write|likho|likh do|compose)\\s*(me|mujhe|ek|a|an|the)?\\s*"), "")
+                .replace(Regex("(?i)\\b(story|kahani|kahaani|poem|nazm|essay|article|letter|khat|speech|paragraph|dastan)\\b\\s*(likho|lokho|on|pr|pe|about|ka|ki|ke bare mein)?"), " ")
+                .replace(Regex("\\s+"), " ").trim()
+                .ifBlank { msg.trim() }
+            showThinking()
+            Thread {
+                val q = when (kind) {
+                    "poem" -> "Write a short poem (8-12 lines) about: $topic. Simple words, clear rhyme."
+                    "essay" -> "Write a short clear essay (8-12 lines) about: $topic. Simple words."
+                    "letter" -> "Write a short polite letter about: $topic."
+                    else -> "Write a short complete story (10-14 lines) titled or about: $topic. " +
+                        "Give it a title, then beginning, middle and end with a moral. Simple English or Roman Urdu (match the user's language). No word loops."
+                }
+                // mobile build: GGUF engine nahi — API key / GitHub AI se likhwao
+                val ans = try { AIBrain.ask(this@MainActivity, q) } catch (_: Exception) { null }
+                    ?: "\u274C Likh nahi saka. API key add karo (api key <key>) ya GitHub AI: github ai token <PAT>"
+                runOnUiThread { chatReply(ans) }
+            }.start()
+            return true
+        }
+
         if (low.startsWith("open ")) {
             val target = msg.substring(5).trim()
             return if (target.startsWith("http")) { runOnUiThread { openUrl(target) }; chatReply("🌐 Khol diya: $target"); true }
