@@ -772,6 +772,121 @@ Auto Bot mein hi chahiye? Likho: download qwen \uD83D\uDC40"""
         }.start()
     }
 
+    /** v4.16: RAM + storage test kar ke best model suggest — buttons ke saath (install / ZIP) */
+    private fun smartModelSuggest(heavy: Boolean = false) {
+        chatReply("🔬 Device test kar raha hoon — RAM + storage...")
+        Thread {
+            try {
+                val am = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
+                val mi = android.app.ActivityManager.MemoryInfo()
+                am.getMemoryInfo(mi)
+                val totalRam = mi.totalMem / 1048576L
+                val availRam = mi.availMem / 1048576L
+                val stat = android.os.StatFs((getExternalFilesDir(null) ?: filesDir).absolutePath)
+                val freeMb = stat.availableBytes / 1048576L
+                val dl = ModelStore.downloaded(this)
+                data class Fit(val idx: Int, val needRam: Long, val sizeMb: Long)
+                val fits = listOf(Fit(0, 2500L, 130L), Fit(1, 4000L, 470L), Fit(2, 6000L, 790L))
+                    .filter { totalRam >= it.needRam && freeMb >= it.sizeMb }
+                val sb = StringBuilder()
+                sb.append("📱 *Device check*
+")
+                sb.append("RAM: ${totalRam} MB total, ${availRam} MB free
+")
+                sb.append("Storage: ${freeMb} MB free
+
+")
+                if (totalRam < 4000L) sb.append("⚠️ *Kam RAM hai* — bada model phone ko hang kar sakta hai, sirf chhota model stable chalega.
+
+")
+                if (fits.isEmpty()) {
+                    sb.append("❌ Itni jagah nahi kisi model ke liye. Storage kholo ya laptop par: 'laptop pr qwen download kaise karein'")
+                    runOnUiThread { chatReply(sb.toString()) }
+                    return@Thread
+                }
+                val best = when { heavy && fits.any { it.idx == 2 } -> 2; fits.any { it.idx == 1 } -> 1; else -> fits.first().idx }
+                val m = ModelStore.presets[best]
+                sb.append("💡 Suggestion: *${m.name}*")
+                sb.append(if (heavy) " (lambi writing/bade kaam ke liye)" else " (roz-marra chat ke liye)")
+                sb.append(if (dl.contains(m.file)) "
+(abhi downloaded hai)" else "")
+                sb.append("
+
+Kaise chahiye? Auto Bot mein install kar doon, ya ZIP (Downloads folder) mein daal doon?")
+                val arr = org.json.JSONArray()
+                for (f in fits) {
+                    val mm = ModelStore.presets[f.idx]
+                    val mark = if (dl.contains(mm.file)) " (pehle se hai)" else ""
+                    arr.put(org.json.JSONObject().put("label", "⬇️ ${mm.name} — install (${mm.size})$mark").put("action", "simset").put("phone", "transformer download ${f.idx + 1}"))
+                }
+                arr.put(org.json.JSONObject().put("label", "📁 ${m.name} ZIP — Downloads mein").put("action", "simset").put("phone", "transformer zip ${best + 1}"))
+                arr.put(org.json.JSONObject().put("label", "❌ Cancel").put("action", "simset").put("phone", "cancel"))
+                runOnUiThread { chatReplyEx(sb.toString(), arr.toString()) }
+            } catch (e: Exception) {
+                runOnUiThread { chatReply("❌ Device check fail: ${e.message}") }
+            }
+        }.start()
+    }
+
+    /** v4.16: model file ZIP tarike se public Downloads folder mein save karo */
+    private fun modelZipToDownloads(m: ModelStore.Model) {
+        val id = "z" + System.currentTimeMillis()
+        val label = "📁 ${m.name} → Downloads"
+        barJs(id, label, 0)
+        Thread {
+            var last = -1
+            var res = ""
+            try {
+                val conn = java.net.URL(m.url).openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 20000
+                conn.readTimeout = 60000
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0 AutoBot")
+                if (conn.responseCode !in 200..299) {
+                    res = "❌ Server ne download nahi diya (HTTP ${conn.responseCode})"
+                } else {
+                    val total = conn.contentLengthLong
+                    var done = 0L
+                    val fname = m.file
+                    var out: java.io.OutputStream? = null
+                    if (android.os.Build.VERSION.SDK_INT >= 29) {
+                        val cv = android.content.ContentValues()
+                        cv.put(android.provider.MediaStore.Downloads.DISPLAY_NAME, fname)
+                        cv.put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/octet-stream")
+                        cv.put(android.provider.MediaStore.Downloads.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+                        val uri = contentResolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv)
+                        if (uri == null) { res = "❌ Downloads folder nahi khula"; conn.disconnect() } else out = contentResolver.openOutputStream(uri)
+                    } else {
+                        @Suppress("DEPRECATION") val dd = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+                        dd.mkdirs()
+                        out = java.io.FileOutputStream(java.io.File(dd, fname))
+                    }
+                    if (out != null) {
+                        conn.inputStream.use { inp -> out.use { o ->
+                            val buf = ByteArray(64 * 1024)
+                            while (true) {
+                                val n = inp.read(buf)
+                                if (n < 0) break
+                                o.write(buf, 0, n)
+                                done += n
+                                if (total > 0) {
+                                    val pct = (done * 100 / total).toInt()
+                                    if (pct != last) { last = pct; barJs(id, label, pct.coerceAtMost(99)) }
+                                }
+                            }
+                        } }
+                        res = "✅ ${m.name} ZIP Downloads mein save ho gaya: Download/$fname
+(${done / 1048576} MB)"
+                    }
+                }
+            } catch (e: Exception) { res = "❌ ZIP download fail: ${e.message}" }
+            val ok = res.startsWith("✅")
+            runOnUiThread {
+                barJs(id, (if (ok) "✅ " else "❌ ") + m.name, if (ok) 100 else -1, !ok)
+                chatReply(res)
+            }
+        }.start()
+    }
+
     private fun modelDownloadWithBar(m: ModelStore.Model) {
         val id = "m" + System.currentTimeMillis()
         val label = "⬇️ ${m.name} (${m.size})"
@@ -784,7 +899,26 @@ Auto Bot mein hi chahiye? Likho: download qwen \uD83D\uDC40"""
             val ok = res.startsWith("✅")
             barJs(id, (if (ok) "✅ " else "❌ ") + m.name, if (ok) 100 else -1, !ok)
             appendTerm(res)
-            chatReply(res)
+            if (ok) {
+                if (false) {
+                    chatReplyEx(
+                        "🆕 *" + m.name + "* Auto Bot mein install ho gaya! ✅\nNaya model abhi use karo? (offline AI isi se chalega)",
+                        org.json.JSONArray()
+                            .put(org.json.JSONObject().put("label", "✅ Use karo — switch to " + m.name).put("action", "simset").put("phone", "model use " + m.name))
+                            .put(org.json.JSONObject().put("label", "📁 ZIP bhi save karo (Downloads)").put("action", "simset").put("phone", "transformer zip " + m.name))
+                            .put(org.json.JSONObject().put("label", "❌ Nahi, purana hi rakho").put("action", "simset").put("phone", "cancel"))
+                            .toString()
+                    )
+                } else {
+                    chatReplyEx(
+                        "🆕 *" + m.name + "* download complete! ✅\nMobile version model RUN nahi karta (GGUF engine sirf AutoBot-GGUF version mein hai).\nFile ZIP karke Downloads mein save kar doon? (laptop ya GGUF version mein use hogi)",
+                        org.json.JSONArray()
+                            .put(org.json.JSONObject().put("label", "📁 ZIP — Downloads mein save karo").put("action", "simset").put("phone", "transformer zip " + m.name))
+                            .put(org.json.JSONObject().put("label", "❌ Nahi theek hai").put("action", "simset").put("phone", "cancel"))
+                            .toString()
+                    )
+                }
+            } else chatReply(res)
         }.start()
     }
 
@@ -1713,6 +1847,33 @@ Auto Bot mein hi chahiye? Likho: download qwen \uD83D\uDC40"""
         }
 
 
+        // ---------- v4.16: change/switch model -> downloaded list + ZIP buttons (mobile: no GGUF engine) ----------
+        if (low == "change model" || low == "change model karo" || low == "model change" || low == "model switch" ||
+            low == "switch model" || low == "switch model karo" || low == "transformer change" || low == "transformer switch" ||
+            low == "model change karo" || low == "model switch karo" || low == "model badlo" || low == "badlo model" ||
+            low.startsWith("model use ") || low.startsWith("switch model ") || low.startsWith("change model ")) {
+            val have = ModelStore.downloaded(this)
+            if (have.isEmpty()) {
+                chatReply("📦 Abhi koi model downloaded nahi.
+⬇️ Download: 'transformer download' — RAM/storage check kar ke best model suggest karunga.")
+                return true
+            }
+            val sb = StringBuilder("📤 *Downloaded models* (mobile build model RUN nahi karta — GGUF engine AutoBot-GGUF version mein hai):
+
+")
+            val arr = org.json.JSONArray()
+            for (f in have) {
+                val nm = f.removeSuffix(".gguf")
+                sb.append("• $nm
+")
+                arr.put(org.json.JSONObject().put("label", "📁 $nm — ZIP to Downloads").put("action", "simset").put("phone", "transformer zip $nm"))
+            }
+            arr.put(org.json.JSONObject().put("label", "⬇️ Naya model download").put("action", "simset").put("phone", "transformer download"))
+            sb.append("
+File ZIP karke laptop (Ollama) ya AutoBot-GGUF version mein use karo.")
+            chatReplyEx(sb.toString(), arr.toString())
+            return true
+        }
         if (low.startsWith("ask ")) {
             val q = msg.substring(4).trim()
             if (q.isBlank()) { chatReply("Sawal likho: ask <sawal>"); return true }
@@ -1742,8 +1903,13 @@ Auto Bot mein hi chahiye? Likho: download qwen \uD83D\uDC40"""
                 rest.isEmpty() || rest == "list" -> appendTerm(ModelStore.list(this))
                 rest.startsWith("download") -> {
                     val m = ModelStore.find(rest.removePrefix("download").trim())
-                    if (m == null) { appendTerm("❌ Model samajh nahi aaya — 'transformer list' likho."); return true }
+                    if (m == null) { smartModelSuggest(Regex("(story|essay|poem|lambi|lamba|badi|bada|heavy|code)").containsMatchIn(low)); return true }
                     runOnUiThread { modelDownloadWithBar(m) }
+                }
+                rest.startsWith("zip") -> {
+                    val m = ModelStore.find(rest.removePrefix("zip").trim())
+                    if (m == null) { chatReply("❌ Model samajh nahi aaya — 'transformer list' likho."); return true }
+                    runOnUiThread { modelZipToDownloads(m) }
                 }
                 rest.startsWith("delete") -> {
                     val m = ModelStore.find(rest.removePrefix("delete").trim())
