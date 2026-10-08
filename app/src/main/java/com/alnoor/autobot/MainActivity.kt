@@ -3262,7 +3262,7 @@ ipa download
                 .replace(Regex("(?i)\\b(story|kahani|kahaani|poem|nazm|essay|article|letter|khat|speech|paragraph|dastan)\\b\\s*(likho|lokho|on|pr|pe|about|ka|ki|ke bare mein)?"), " ")
                 .replace(Regex("\\s+"), " ").trim()
                 .ifBlank { msg.trim() }
-            showThinking()
+            chatReply("✍️ Likh raha hoon...")
             Thread {
                 val q = when (kind) {
                     "poem" -> "Write a short poem (8-12 lines) about: $topic. Simple words, clear rhyme."
