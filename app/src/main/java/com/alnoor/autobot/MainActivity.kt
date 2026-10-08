@@ -379,7 +379,7 @@ class MainActivity : AppCompatActivity() {
     // shell engine: real Android sh, background mein bot bhi use karta hai
     /** v4.15: Play Store se app dhoondo + Install + permission accept + done report (accessibility) */
     private fun playStoreInstall(query: String) {
-        chatReply("\U0001F6CD\uFE0F Play Store khol raha hoon — \"$query\" dhoondta hoon...")
+        chatReply("🛍\uFE0F Play Store khol raha hoon — \"$query\" dhoondta hoon...")
         Thread {
             var done = ""
             try {
@@ -433,7 +433,7 @@ class MainActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) { done = "error:" + e.message }
             val msg = when {
-                done == "ok" -> "\U0001F389 Ho gaya! \"$query\" install ho gaya.\nKholne ke liye: open $query"
+                done == "ok" -> "🎉 Ho gaya! \"$query\" install ho gaya.\nKholne ke liye: open $query"
                 done == "already" -> ""
                 done == "user-back" -> "\u23F9\uFE0F Install rok diya — tum Auto Bot par wapas aa gaye the."
                 done == "notfound" -> "\u274C \"$query\" Play Store par nahi mila (ya Install button nahi mila)."
@@ -1426,6 +1426,7 @@ Auto Bot mein hi chahiye? Likho: download qwen \uD83D\uDC40"""
     }
 
     private fun runCommand(low: String, msg: String): Boolean {
+        val accSteps = "♿ Accessibility abhi OFF hai. On karne ke steps:\n1. Phone Settings kholo\n2. Accessibility / Accessibility kholo\n3. 'Auto Bot' ya 'Auto Bot Accessibility' tap karo\n4. On kar ke Allow karo\n(Tip: menu mein ♿ Accessibility page se seedha settings khul jayega)\n\nOn hone ke baad wahi task dobara bolo."
         // ---------- OFFLINE BRAIN (v2.6): bina API key / bina model ke bhi ye commands chalete hain ----------
         try {
             
@@ -1791,7 +1792,6 @@ Auto Bot mein hi chahiye? Likho: download qwen \uD83D\uDC40"""
         }
 
         // ---------- v3.3: ACCESSIBILITY ----------
-        val accSteps = "♿ Accessibility abhi OFF hai. On karne ke steps:\n1. Phone Settings kholo\n2. Accessibility / Accessibility kholo\n3. 'Auto Bot' ya 'Auto Bot Accessibility' tap karo\n4. On kar ke Allow karo\n(Tip: menu mein ♿ Accessibility page se seedha settings khul jayega)\n\nOn hone ke baad wahi task dobara bolo."
         if (low == "accessibility" || low == "accessibility status" || low == "accessibility on" || low.startsWith("accessibility ")) {
             val on = AutoBotAccessibilityService.isOn()
             chatReply(if (on) "♿ Accessibility ON hai — Auto Bot screen padh sakta hai.\nTask do: 'screen parho'" else accSteps)
@@ -3149,13 +3149,13 @@ ipa download
         }
         if (low == "powers" || low == "power list" || low.contains("full power") || low == "kya kar sakte ho" || low == "kya kar sakte ho?") {
             chatReply("\u26A1 AUTO BOT \u2014 FULL POWERS (Accessibility ON ho to sab chalta hai):\n\n" +
-                "\U0001F4F1 SCREEN: screen parho | tap <text> | long press <text> | tap x y | type <text> | scroll up/down | swipe left/right | back jao | home jao | recents | notifications\n\n" +
-                "\U0001F6CD\uFE0F PLAY STORE: install <app> | <app> download karo | app band karo | play store kholo | play store search <app>\n\n" +
-                "\U0001F4F2 APPS: open <app> | app lock <app> pin <1234> | unlock karo\n\n" +
-                "\U0001F4DE CALLS: call <naam/number> | again | call <naam> sim 1/2 | call <naam> 5 baje\n\n" +
-                "\U0001F3A4 VOICE: mic on (offline sunta hai) | jarvis on \u2014 bolo aur karwao, TTS se jawab\n\n" +
-                "\U0001F9E0 AI: koi bhi sawal likho | likho story/poem/essay <topic> | download qwen\n\n" +
-                "\U0001F4BB TERMINAL/FILES: sh <command> | py <code> | cloud run <command>\n\n" +
+                "📱 SCREEN: screen parho | tap <text> | long press <text> | tap x y | type <text> | scroll up/down | swipe left/right | back jao | home jao | recents | notifications\n\n" +
+                "🛍\uFE0F PLAY STORE: install <app> | <app> download karo | app band karo | play store kholo | play store search <app>\n\n" +
+                "📲 APPS: open <app> | app lock <app> pin <1234> | unlock karo\n\n" +
+                "📞 CALLS: call <naam/number> | again | call <naam> sim 1/2 | call <naam> 5 baje\n\n" +
+                "🎤 VOICE: mic on (offline sunta hai) | jarvis on \u2014 bolo aur karwao, TTS se jawab\n\n" +
+                "🧠 AI: koi bhi sawal likho | likho story/poem/essay <topic> | download qwen\n\n" +
+                "💻 TERMINAL/FILES: sh <command> | py <code> | cloud run <command>\n\n" +
                 "Accessibility ON karne ke liye: menu \u2192 \u26A9 Accessibility \u2192 On. Phir ye list wapas maango: 'powers'")
             return true
         }
