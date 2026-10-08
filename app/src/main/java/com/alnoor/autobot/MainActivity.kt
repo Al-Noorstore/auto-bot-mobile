@@ -1854,23 +1854,18 @@ Kaise chahiye? Auto Bot mein install kar doon, ya ZIP (Downloads folder) mein da
             low.startsWith("model use ") || low.startsWith("switch model ") || low.startsWith("change model ")) {
             val have = ModelStore.downloaded(this)
             if (have.isEmpty()) {
-                chatReply("📦 Abhi koi model downloaded nahi.
-⬇️ Download: 'transformer download' — RAM/storage check kar ke best model suggest karunga.")
+                chatReply("📦 Abhi koi model downloaded nahi.\n⬇️ Download: 'transformer download' — RAM/storage check kar ke best model suggest karunga.")
                 return true
             }
-            val sb = StringBuilder("📤 *Downloaded models* (mobile build model RUN nahi karta — GGUF engine AutoBot-GGUF version mein hai):
-
-")
+            val sb = StringBuilder("📤 *Downloaded models* (mobile build model RUN nahi karta — GGUF engine AutoBot-GGUF version mein hai):\n\n")
             val arr = org.json.JSONArray()
             for (f in have) {
                 val nm = f.removeSuffix(".gguf")
-                sb.append("• $nm
-")
+                sb.append("• $nm\n")
                 arr.put(org.json.JSONObject().put("label", "📁 $nm — ZIP to Downloads").put("action", "simset").put("phone", "transformer zip $nm"))
             }
             arr.put(org.json.JSONObject().put("label", "⬇️ Naya model download").put("action", "simset").put("phone", "transformer download"))
-            sb.append("
-File ZIP karke laptop (Ollama) ya AutoBot-GGUF version mein use karo.")
+            sb.append("\nFile ZIP karke laptop (Ollama) ya AutoBot-GGUF version mein use karo.")
             chatReplyEx(sb.toString(), arr.toString())
             return true
         }
